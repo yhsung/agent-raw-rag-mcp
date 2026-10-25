@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Raw-RAG 把哪些資料丟給 RAG？— 完整資料結構與檢索負載圖解</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --panel-alt: #162032;
+      --code-bg: #0b1120;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.14);
+      --green: #34d399;
+      --green-soft: rgba(52, 211, 153, 0.14);
+      --amber: #fbbf24;
+      --amber-soft: rgba(251, 191, 36, 0.14);
+      --red: #f87171;
+      --red-soft: rgba(248, 113, 113, 0.14);
+      --purple: #a78bfa;
+      --purple-soft: rgba(167, 139, 250, 0.14);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Noto Sans TC", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 36px 24px 64px;
+    }
+
+    .container {
+      max-width: 1220px;
+      margin: 0 auto;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+      margin-bottom: 32px;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #ffffff;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+      max-width: 960px;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 28px;
+    }
+
+    section h2 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    section h2 .num {
+      background: var(--accent);
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 800;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .sec-desc {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 22px;
+    }
+
+    code {
+      font-family: "SF Mono", "JetBrains Mono", Menlo, monospace;
+      font-size: 12.5px;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: #7dd3fc;
+    }
+
+    pre {
+      font-family: "SF Mono", "JetBrains Mono", Menlo, monospace;
+      font-size: 12.5px;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      overflow-x: auto;
+      color: #e2e8f0;
+      line-height: 1.55;
+    }
+
+    .hl-key { color: #7dd3fc; }
+    .hl-str { color: #86efac; }
+    .hl-num { color: #fcd34d; }
+    .hl-comment { color: #64748b; font-style: italic; }
+
+    .diagram-box {
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      overflow-x: auto;
+      margin-bottom: 20px;
+    }
+
+    svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+
+    @media (max-width: 960px) {
+      .grid-3, .grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .pill {
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    .pill-blue { background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.35); }
+    .pill-green { background: var(--green-soft); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.35); }
+    .pill-amber { background: var(--amber-soft); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.35); }
+    .pill-purple { background: var(--purple-soft); color: var(--purple); border: 1px solid rgba(167, 139, 250, 0.35); }
+    .pill-red { background: var(--red-soft); color: var(--red); border: 1px solid rgba(248, 113, 113, 0.35); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+      background: var(--panel-alt);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    th, td {
+      padding: 14px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    th {
+      background: rgba(15, 23, 42, 0.65);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .check-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 13.5px;
+    }
+
+    .check-list li {
+      background: rgba(15, 23, 42, 0.55);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">Data Payload &amp; Schema Inspection · Litmeb/RAW-RAG</div>
+      <h1>Raw-RAG 把哪些資料丟給 RAG？</h1>
+      <p class="subtitle">
+        深入解析 <code>rag_adapter.py</code> 的資料轉換管線：從原始對話到向量庫索引（<code>chunks</code> + <code>embeddings</code> + <code>turn_context</code>），以及在檢索時分別送給 <strong>Embedding 模型</strong>、<strong>Reranker 模型</strong>與 <strong>Reader LLM</strong> 的精確資料格式。
+      </p>
+    </header>
+
+    <!-- Section 1: End-to-End Pipeline SVG -->
+    <section>
+      <h2><span class="num">1</span> 全局資料流總覽：從原始對話到三個模型的輸入負載</h2>
+      <p class="sec-desc">
+        <code>Raw-RAG</code> 的關鍵設計是<strong>「檢索時用 256-token 緊湊切片算分數，但在送給 Reader LLM 前，會透過 <code>turn_context</code> 將切片還原為完整的對話回合」</strong>。
+      </p>
+
+      <div class="diagram-box" style="margin-bottom: 0;">
+        <svg viewBox="0 0 1100 340" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
+            </marker>
+            <marker id="arr-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#a78bfa" />
+            </marker>
+            <marker id="arr-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399" />
+            </marker>
+          </defs>
+
+          <!-- Step 1: Raw Input -->
+          <rect x="16" y="30" width="215" height="280" rx="10" fill="#1e293b" stroke="#475569" />
+          <text x="30" y="58" fill="#f8fafc" font-size="14" font-weight="700">1. 原始對話格式化</text>
+          <text x="30" y="76" fill="#94a3b8" font-size="11">_format_conversation()</text>
+
+          <rect x="30" y="92" width="187" height="72" rx="6" fill="#0b1120" stroke="#334155" />
+          <text x="40" y="112" fill="#7dd3fc" font-size="11" font-weight="700">Header (對話標頭):</text>
+          <text x="40" y="128" fill="#cbd5e1" font-size="10.5">Conversation ID: locomo_0</text>
+          <text x="40" y="143" fill="#cbd5e1" font-size="10.5">Speaker A: Caroline</text>
+          <text x="40" y="158" fill="#cbd5e1" font-size="10.5">Speaker B: Melanie</text>
+
+          <rect x="30" y="176" width="187" height="116" rx="6" fill="#0b1120" stroke="#38bdf8" />
+          <text x="40" y="196" fill="#38bdf8" font-size="11" font-weight="700">Turn Lines (逐句對白):</text>
+          <text x="40" y="216" fill="#86efac" font-size="10.5">[2023-05-08] Caroline: ...</text>
+          <text x="40" y="234" fill="#86efac" font-size="10.5">[2023-05-08] Melanie: ...</text>
+          <text x="40" y="252" fill="#86efac" font-size="10.5">[2023-05-25] Caroline: ...</text>
+          <text x="40" y="276" fill="#94a3b8" font-size="10">保留真實日期 + 說話者 + 原文</text>
+
+          <line x1="231" y1="170" x2="268" y2="170" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr)" />
+
+          <!-- Step 2: RAG Index Storage -->
+          <rect x="274" y="30" width="265" height="280" rx="10" fill="#1e293b" stroke="#38bdf8" />
+          <text x="290" y="58" fill="#38bdf8" font-size="14" font-weight="700">2. 存進 RAG 索引的 3 大結構</text>
+          <text x="290" y="76" fill="#94a3b8" font-size="11">rag_index.json / pgvector</text>
+
+          <rect x="290" y="92" width="233" height="68" rx="6" fill="#0b1120" stroke="#38bdf8" />
+          <text x="302" y="112" fill="#38bdf8" font-size="11.5" font-weight="700">A. chunks (256-tok 切片陣列)</text>
+          <text x="302" y="130" fill="#cbd5e1" font-size="10.5">• content (256 tokens 原始文字切片)</text>
+          <text x="302" y="146" fill="#cbd5e1" font-size="10.5">• start_token, end_token, start_turn, end_turn</text>
+
+          <rect x="290" y="170" width="233" height="50" rx="6" fill="#0b1120" stroke="#34d399" />
+          <text x="302" y="190" fill="#34d399" font-size="11.5" font-weight="700">B. embeddings (向量陣列)</text>
+          <text x="302" y="208" fill="#cbd5e1" font-size="10.5">• 對每個 chunk["content"] 編碼的浮點向量</text>
+
+          <rect x="290" y="230" width="233" height="66" rx="6" fill="#0b1120" stroke="#a78bfa" />
+          <text x="302" y="250" fill="#a78bfa" font-size="11.5" font-weight="700">C. turn_context (回合映射表)</text>
+          <text x="302" y="268" fill="#cbd5e1" font-size="10.5">• turn_spans: 每回合 [tok_start, tok_end]</text>
+          <text x="302" y="284" fill="#cbd5e1" font-size="10.5">• turn_session_dates &amp; turn_lines</text>
+
+          <!-- Arrows from Step 2 to Step 3 -->
+          <line x1="539" y1="126" x2="585" y2="95" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr)" />
+          <line x1="539" y1="263" x2="585" y2="235" stroke="#a78bfa" stroke-width="2" marker-end="url(#arr-purple)" />
+
+          <!-- Step 3: Models Payload -->
+          <rect x="592" y="30" width="235" height="130" rx="10" fill="#1e293b" stroke="#fbbf24" />
+          <text x="608" y="56" fill="#fbbf24" font-size="13.5" font-weight="700">3A. 丟給 Embedding / Reranker</text>
+          <text x="608" y="76" fill="#94a3b8" font-size="11">Qwen3-Embedding-4B &amp; Reranker-4B</text>
+          <rect x="608" y="88" width="203" height="58" rx="6" fill="#0b1120" stroke="#334155" />
+          <text x="618" y="108" fill="#fcd34d" font-size="11" font-weight="700">僅丟「256-tok 原始文字切片」：</text>
+          <text x="618" y="126" fill="#cbd5e1" font-size="10.5">• Query: 使用者問題原文</text>
+          <text x="618" y="141" fill="#cbd5e1" font-size="10.5">• Doc: chunk["content"] (緊湊切片)</text>
+
+          <rect x="592" y="176" width="235" height="134" rx="10" fill="#1e293b" stroke="#a78bfa" />
+          <text x="608" y="202" fill="#a78bfa" font-size="13.5" font-weight="700">3B. 呈現期動態展開 (Top-15)</text>
+          <text x="608" y="220" fill="#94a3b8" font-size="11">_expand_chunk_to_turns()</text>
+          <rect x="608" y="232" width="203" height="64" rx="6" fill="#0b1120" stroke="#334155" />
+          <text x="618" y="252" fill="#cbd5e1" font-size="10.5">查 turn_spans 將 Top-15 切片</text>
+          <text x="618" y="268" fill="#34d399" font-size="11" font-weight="700">還原為「完整未截斷的對話回合」</text>
+          <text x="618" y="284" fill="#cbd5e1" font-size="10.5">並透過 seen_turns 自動去除重疊行</text>
+
+          <line x1="827" y1="243" x2="862" y2="243" stroke="#34d399" stroke-width="2" marker-end="url(#arr-green)" />
+
+          <!-- Step 4: Final Reader Prompt -->
+          <rect x="868" y="30" width="216" height="280" rx="10" fill="#1e293b" stroke="#34d399" />
+          <text x="884" y="58" fill="#34d399" font-size="14" font-weight="700">4. 丟給 Reader LLM</text>
+          <text x="884" y="76" fill="#94a3b8" font-size="11">_format_context()</text>
+          <rect x="884" y="92" width="184" height="202" rx="6" fill="#0b1120" stroke="#34d399" />
+          <text x="894" y="114" fill="#7dd3fc" font-size="10.5" font-weight="700">Memory 1 (chunk=12,</text>
+          <text x="894" y="128" fill="#7dd3fc" font-size="10.5">similarity=0.68, rerank=0.94):</text>
+          <text x="894" y="146" fill="#86efac" font-size="10">[2023-05-08] Caroline: ...</text>
+          <text x="894" y="162" fill="#86efac" font-size="10">[2023-05-08] Melanie: ...</text>
+          <text x="894" y="190" fill="#7dd3fc" font-size="10.5" font-weight="700">Memory 2 (chunk=45, ...):</text>
+          <text x="894" y="208" fill="#86efac" font-size="10">[2023-05-25] Caroline: ...</text>
+          <text x="894" y="242" fill="#fcd34d" font-size="10.5" font-weight="700">+ Question: 使用者問題</text>
+          <text x="894" y="260" fill="#fcd34d" font-size="10.5" font-weight="700">+ CoT 回答指令 Prompt</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- Section 2: Exact JSON Schema stored in RAG Index -->
+    <section>
+      <h2><span class="num">2</span> 存進 RAG 索引（<code>rag_index.json</code>）的真實資料結構</h2>
+      <p class="sec-desc">
+        在 <code>rag_adapter.py</code> 中，每個對話索引只存以下 3 個欄位的 JSON 物件，完全沒有 LLM 生成的摘要或知識圖譜三元組：
+      </p>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">1. <code>chunks</code> (切片與座標)</span>
+            <span class="pill pill-blue">檢索基本單位</span>
+          </div>
+          <p style="font-size: 13px; color: var(--muted);">
+            以 <code>cl100k_base</code> 切成 256 tokens（重疊 32 tokens）。注意除了文字外，還記錄了該切片橫跨哪些 Token 與哪些對話回合（<code>start_turn</code> ~ <code>end_turn</code>）。
+          </p>
+          <pre>{
+  <span class="hl-key">"chunk_id"</span>: <span class="hl-str">"locomo_0_chunk_0"</span>,
+  <span class="hl-key">"chunk_index"</span>: <span class="hl-num">0</span>,
+  <span class="hl-key">"content"</span>: <span class="hl-str">"Conversation ID: locomo_0\nSpeaker A: Caroline\nSpeaker B: Melanie\n\n[2023-05-08] Caroline: I went to a LGBTQ support group..."</span>,
+  <span class="hl-key">"start_token"</span>: <span class="hl-num">0</span>,
+  <span class="hl-key">"end_token"</span>: <span class="hl-num">256</span>,
+  <span class="hl-key">"start_turn"</span>: <span class="hl-num">0</span>,
+  <span class="hl-key">"end_turn"</span>: <span class="hl-num">7</span>
+}</pre>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">2. <code>embeddings</code> (稠密向量)</span>
+            <span class="pill pill-green">粗排相似度計算</span>
+          </div>
+          <p style="font-size: 13px; color: var(--muted);">
+            直接將左方 <code>chunk["content"]</code> 原文送進 <code>Qwen3-Embedding-4B</code> 所得到的浮點向量，一對一對應每個區塊。
+          </p>
+          <pre><span class="hl-comment">// 與 chunks 陣列一對一對齊</span>
+[
+  [
+    <span class="hl-num">-0.018432</span>,
+    <span class="hl-num">0.042911</span>,
+    <span class="hl-num">0.009184</span>,
+    <span class="hl-comment">// ... 2560 維浮點數 (Qwen3-Embedding-4B)</span>
+  ],
+  <span class="hl-comment">// chunk_1, chunk_2 ...</span>
+]</pre>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">3. <code>turn_context</code> (回合映射表)</span>
+            <span class="pill pill-purple">時序過濾 + 無損展開</span>
+          </div>
+          <p style="font-size: 13px; color: var(--muted);">
+            記錄每一輪對話（Turn）在整份文件中的 Token 起訖位置與日期，讓系統能在檢索前按日期過濾，並在檢索後把 256-token 切片還原成完整對話回合。
+          </p>
+          <pre>{
+  <span class="hl-key">"header"</span>: <span class="hl-str">"Conversation ID: locomo_0..."</span>,
+  <span class="hl-key">"turn_spans"</span>: [
+    [<span class="hl-num">18</span>, <span class="hl-num">42</span>],  <span class="hl-comment">// Turn 0 的 token 區間</span>
+    [<span class="hl-num">43</span>, <span class="hl-num">79</span>]   <span class="hl-comment">// Turn 1 的 token 區間</span>
+  ],
+  <span class="hl-key">"turn_timestamps"</span>: [
+    <span class="hl-str">"2023-05-08T13:14:00"</span>, ...
+  ],
+  <span class="hl-key">"turn_session_dates"</span>: [
+    <span class="hl-str">"2023-05-08"</span>, ...
+  ],
+  <span class="hl-key">"turn_lines"</span>: [
+    <span class="hl-str">"[2023-05-08] Caroline: ..."</span>, ...
+  ]
+}</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Why Display-Time Turn Expansion matters -->
+    <section>
+      <h2><span class="num">3</span> 關鍵差異：「丟給檢索模型的切片」vs.「丟給 Reader LLM 的展開記憶」</h2>
+      <p class="sec-desc">
+        固定 256 tokens 切塊常會把一句長話從中間切斷。<code>Raw-RAG</code> 為什麼不怕切斷句子？因為<strong>檢索模型看的是 256-token 切片，但 Reader LLM 看到的是展開後的完整回合</strong>（<code>expand_turns_on_display: true</code>）：
+      </p>
+
+      <div class="grid-2">
+        <div class="card" style="border-color: rgba(251, 191, 36, 0.45);">
+          <div class="card-header">
+            <span class="card-title">階段 A：丟給 Embedding 與 Reranker 的文字</span>
+            <span class="pill pill-amber">256-Token 緊湊切片 (可能首尾截斷)</span>
+          </div>
+          <p style="font-size: 13px; color: var(--muted);">
+            <code>chunk["content"]</code> 嚴格限制在 256 tokens，確保向量語意集中、不被長篇大論稀釋，但頭尾的句子可能剛好被切在一半：
+          </p>
+          <pre><span class="hl-comment">// chunk_12["content"] (剛好在 token 邊界被切斷)</span>
+...really helped me feel seen.
+[2023-05-08] Melanie: That sounds amazing, Caroline! What made it so impactful for you?
+[2023-05-08] Caroline: Hearing other trans women share their stories inspired me to <span style="color: var(--red); font-weight:700;">[← 在第 256 token 處截斷]</span></pre>
+        </div>
+
+        <div class="card" style="border-color: rgba(52, 211, 153, 0.45);">
+          <div class="card-header">
+            <span class="card-title">階段 B：最終丟給 Reader LLM 的文字 (<code>_format_context</code>)</span>
+            <span class="pill pill-green">動態展開為完整對話回合 + 自動去重</span>
+          </div>
+          <p style="font-size: 13px; color: var(--muted);">
+            當 <code>chunk_12</code> 進入 Top-15 後，<code>_expand_chunk_to_turns</code> 會查 <code>turn_spans</code> 找出它觸及的所有回合，把頭尾被切斷的句子完整補齊，並標上檢索分數送給 Reader：
+          </p>
+          <pre>Memory 1 (chunk=12, similarity=0.684210, rerank=0.9412):
+<span style="color: var(--green);">[2023-05-08] Caroline: I went to a LGBTQ support group yesterday and it really helped me feel seen.</span>
+[2023-05-08] Melanie: That sounds amazing, Caroline! What made it so impactful for you?
+<span style="color: var(--green);">[2023-05-08] Caroline: Hearing other trans women share their stories inspired me to pursue counseling!</span></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: Stage-by-Stage Table & What is NOT fed -->
+    <section style="margin-bottom: 0;">
+      <h2><span class="num">4</span> 總結對照表：Raw-RAG 丟了什麼 vs. 刻意不丟什麼？</h2>
+      <p class="sec-desc">
+        對比 Mem0、Zep、MemOS 等複雜記憶系統，<code>Raw-RAG</code> 拒絕把任何 LLM 二次改寫的產物放進索引。
+      </p>
+
+      <div class="grid-2" style="margin-bottom: 20px;">
+        <div>
+          <h3 style="font-size: 15px; color: var(--green); margin-bottom: 10px;">✓ Raw-RAG 實際丟進 RAG 的資料</h3>
+          <ul class="check-list">
+            <li><strong>對話標頭 (Header)</strong>：<code>Conversation ID</code>、<code>Speaker A</code>、<code>Speaker B</code>。</li>
+            <li><strong>帶日期與說話者的原始對白</strong>：<code>[YYYY-MM-DD] Speaker: Content</code>。</li>
+            <li><strong>256-Token 滑動切片 (Overlap 32)</strong>：供 Embedding 與 Cross-Encoder 計算語意匹配。</li>
+            <li><strong>Token 與回合位置座標 (<code>turn_spans</code>)</strong>：供呈現期無損還原完整對話回合並跨區塊去重。</li>
+            <li><strong>回合時間戳記 (<code>turn_session_dates</code>)</strong>：供檢索前過濾時間範圍，以及在狀態演進任務依時間先後重排。</li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 style="font-size: 15px; color: var(--red); margin-bottom: 10px;">✗ Raw-RAG 刻意「不丟」進 RAG 的衍生資料</h3>
+          <ul class="check-list">
+            <li><strong>不丟 LLM 萃取的「原子事實 (Atomic Facts)」</strong>：實測會讓索引物件膨脹 <code>5.38×</code> 且切斷跨回合因果鏈。</li>
+            <li><strong>不丟 LLM 生成的「滾動摘要 (Rolling Summaries)」</strong>：實測在寫入期直接造成 <code>21.9%</code> 的永久表徵損失。</li>
+            <li><strong>不丟「知識圖譜三元組 (KG Triples)」或「實體屬性表」</strong>：省去每輪對話高達數百倍的 LLM 寫入延遲。</li>
+            <li><strong>不丟 LLM 主觀判斷的「記憶重要性分數 / 覆寫標記」</strong>：避免寫入期誤刪未來多跳推理所需的背景線索。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

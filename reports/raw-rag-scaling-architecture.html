@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Raw-RAG 如何管理日漸膨脹的對話與向量索引 — 架構圖解</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --panel-alt: #162032;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.14);
+      --green: #34d399;
+      --green-soft: rgba(52, 211, 153, 0.14);
+      --amber: #fbbf24;
+      --amber-soft: rgba(251, 191, 36, 0.14);
+      --red: #f87171;
+      --red-soft: rgba(248, 113, 113, 0.14);
+      --purple: #a78bfa;
+      --purple-soft: rgba(167, 139, 250, 0.14);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Noto Sans TC", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 36px 24px 64px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+      margin-bottom: 32px;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #ffffff;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+      max-width: 900px;
+    }
+
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 36px;
+    }
+
+    .metric-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+    }
+
+    .metric-card .label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .metric-card .value {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+
+    .metric-card .desc {
+      font-size: 13px;
+      color: #cbd5e1;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 28px;
+    }
+
+    section h2 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    section h2 .num {
+      background: var(--accent);
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 800;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .sec-desc {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 22px;
+    }
+
+    code {
+      font-family: "SF Mono", "JetBrains Mono", Menlo, monospace;
+      font-size: 12.5px;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: #7dd3fc;
+    }
+
+    .diagram-box {
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      overflow-x: auto;
+    }
+
+    svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 860px) {
+      .comparison-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .comp-panel {
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .comp-panel.bad {
+      border-color: rgba(248, 113, 113, 0.45);
+    }
+
+    .comp-panel.good {
+      border-color: rgba(52, 211, 153, 0.45);
+    }
+
+    .comp-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .tag-bad {
+      font-size: 12px;
+      background: var(--red-soft);
+      color: var(--red);
+      padding: 2px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(248, 113, 113, 0.35);
+    }
+
+    .tag-good {
+      font-size: 12px;
+      background: var(--green-soft);
+      color: var(--green);
+      padding: 2px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(52, 211, 153, 0.35);
+    }
+
+    .flow-step {
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      font-size: 13.5px;
+    }
+
+    .flow-step strong {
+      display: block;
+      margin-bottom: 3px;
+      color: #ffffff;
+    }
+
+    .flow-arrow {
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      margin: 4px 0;
+    }
+
+    .legend-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      display: inline-block;
+    }
+
+    .code-ref {
+      margin-top: 14px;
+      font-size: 12.5px;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">Architecture &amp; Scaling Deep Dive · arXiv:2610.30755</div>
+      <h1>Raw-RAG 如何管理日漸膨脹的對話與向量索引？</h1>
+      <p class="subtitle">
+        基於 <code>Litmeb/RAW-RAG</code> (<code>rag_adapter.py</code> / <code>rag_pgvector_store.py</code>) 原始碼與本機實測數據：寫入端採用 <strong>Append-Only 增量尾部切塊</strong>（零表徵損失），讀取端採用 <strong>常數預算兩階段漏斗 + 時序重排展開</strong>（隔離 LLM Context 膨脹）。
+      </p>
+    </header>
+
+    <div class="summary-strip">
+      <div class="metric-card">
+        <div class="label">寫入端單步計算複雜度</div>
+        <div class="value">O(ΔL) · 0 LLM Calls</div>
+        <div class="desc">僅重切與嵌入最後一個未滿 256 tokens 的尾部區塊，歷史區塊完全鎖定不重算。</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">寫入期資訊流失 (Representation Loss)</div>
+        <div class="value" style="color: var(--green);">0.0% (零有損壓縮)</div>
+        <div class="desc">對比複雜記憶系統在寫入期因 LLM 摘要/萃取直接損失 21.9% 狀態演進證據。</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">讀取端 Reader LLM 上下文上限</div>
+        <div class="value">常數 O(k) ≈ 3.8K tokens</div>
+        <div class="desc">無論歷史膨脹至 32K、197K 或百萬 tokens，永遠只取 Top-128 → Rerank Top-15。</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">百萬級長對話 RAM 保護</div>
+        <div class="value" style="color: var(--purple);">pgvector + 暫態釋放</div>
+        <div class="desc">支援外部 PostgreSQL 向量庫與單次檢索後立即釋放 RAM 快取 (<code>gc.collect()</code>)。</div>
+      </div>
+    </div>
+
+    <!-- Diagram 1 -->
+    <section>
+      <h2><span class="num">1</span> 架構對比：為什麼不在寫入端用 LLM 壓縮對話？</h2>
+      <p class="sec-desc">
+        主流複雜記憶系統試圖在寫入時用 LLM 萃取「原子事實」或「摘要」來控制膨脹，實測卻造成<strong>永久表徵損失</strong>與<strong>碎片數量反向暴增 5.38 倍</strong>；<code>Raw-RAG</code> 則將「儲存增長」與「讀取視窗」徹底解耦。
+      </p>
+
+      <div class="comparison-grid">
+        <div class="comp-panel bad">
+          <div class="comp-title">
+            <span>傳統複雜記憶系統 (Mem0 / MemOS / Atomic Facts)</span>
+            <span class="tag-bad">寫入端有損壓縮</span>
+          </div>
+          <div class="flow-step">
+            <strong>1. 持續膨脹的對話流 (N tokens)</strong>
+            每輪對話進入系統，觸發寫入期記憶管理管線。
+          </div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-step" style="border-color: rgba(248, 113, 113, 0.5);">
+            <strong>2. 寫入期呼叫 LLM 萃取 / 合併 / 覆寫</strong>
+            將原始對話拆解為原子事實或滾動摘要（建庫耗時暴增 <code>655×</code>，約 89.2 秒）。
+          </div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-step" style="background: rgba(248, 113, 113, 0.1); border-color: rgba(248, 113, 113, 0.5);">
+            <strong style="color: var(--red);">副作用 A：永久表徵損失 (R − C = −21.9%)</strong>
+            跨回合的狀態演進因果鏈在寫入時被截斷，即使全庫塞進 LLM 也無法救回。
+          </div>
+          <div class="flow-step" style="background: rgba(248, 113, 113, 0.1); border-color: rgba(248, 113, 113, 0.5); margin-bottom: 0;">
+            <strong style="color: var(--red);">副作用 B：細碎物件反向膨脹 (5.38×)</strong>
+            原本 24 個 256-token 區塊被拆成 129 條細碎事實，檢索噪音反而更大。
+          </div>
+        </div>
+
+        <div class="comp-panel good">
+          <div class="comp-title">
+            <span>Raw-RAG 架構 (Litmeb/RAW-RAG)</span>
+            <span class="tag-good">讀取端固定預算漏斗</span>
+          </div>
+          <div class="flow-step">
+            <strong>1. 持續膨脹的對話流 (N tokens)</strong>
+            每輪對話進入 <code>RAGAdapter.add_incremental_message</code>。
+          </div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-step" style="border-color: rgba(52, 211, 153, 0.5);">
+            <strong>2. 寫入期：零 LLM 呼叫、增量尾部切塊 O(ΔL)</strong>
+            原文 100% 保留於 256-token 區塊（overlap 32），建庫僅需 <code>0.14 秒</code>。
+          </div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-step" style="background: rgba(52, 211, 153, 0.1); border-color: rgba(52, 211, 153, 0.5);">
+            <strong style="color: var(--green);">優勢 A：零表徵損失 + 完整演進路徑保留</strong>
+            所有歷史修改紀錄、時間戳記與雙向對白原封不動保留在索引中。
+          </div>
+          <div class="flow-step" style="background: rgba(52, 211, 153, 0.1); border-color: rgba(52, 211, 153, 0.5); margin-bottom: 0;">
+            <strong style="color: var(--green);">優勢 B：讀取端常數上限 (Top-128 → Top-15)</strong>
+            透過兩階段檢索漏斗，送入 Reader LLM 的 Context 永遠鎖定在 ~3.8K tokens。
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Diagram 2 -->
+    <section>
+      <h2><span class="num">2</span> 寫入端機制：增量尾部切塊與嵌入 (Incremental Tail-Only Update)</h2>
+      <p class="sec-desc">
+        當對話逐句增加時，<code>RAGAdapter.add_incremental_message</code> 不會重切或重算整段歷史。前 <code>N-1</code> 個已填滿 256 tokens 的區塊被標記為 <code>stable_chunks</code>（不可變），每次只重算最後一個未滿區塊與新延伸出的 <code>tail_chunks</code>。
+      </p>
+
+      <div class="diagram-box">
+        <svg viewBox="0 0 1060 310" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
+            </marker>
+            <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399" />
+            </marker>
+          </defs>
+
+          <!-- Background Regions -->
+          <rect x="20" y="20" width="600" height="150" rx="10" fill="rgba(52, 211, 153, 0.06)" stroke="#34d399" stroke-dasharray="5,5" />
+          <text x="36" y="46" fill="#34d399" font-size="13" font-weight="700">不可變歷史區 (Immutable Stable Chunks: old_chunks[:first_changed]) — 零重算</text>
+
+          <rect x="635" y="20" width="405" height="150" rx="10" fill="rgba(251, 191, 36, 0.08)" stroke="#fbbf24" stroke-dasharray="5,5" />
+          <text x="650" y="46" fill="#fbbf24" font-size="13" font-weight="700">可變尾部區 (Mutable Tail Chunks) — 僅此區呼叫 Embedding</text>
+
+          <!-- Stable Chunks -->
+          <rect x="36" y="65" width="175" height="82" rx="8" fill="#1e293b" stroke="#34d399" stroke-width="1.5" />
+          <text x="50" y="92" fill="#f8fafc" font-size="13" font-weight="700">Chunk #0 (256 tok)</text>
+          <text x="50" y="114" fill="#94a3b8" font-size="11">Tokens [0 : 256]</text>
+          <text x="50" y="132" fill="#34d399" font-size="11">✓ 向量已快取 (鎖定)</text>
+
+          <rect x="228" y="65" width="175" height="82" rx="8" fill="#1e293b" stroke="#34d399" stroke-width="1.5" />
+          <text x="242" y="92" fill="#f8fafc" font-size="13" font-weight="700">Chunk #1 (256 tok)</text>
+          <text x="242" y="114" fill="#94a3b8" font-size="11">Tokens [224 : 480] (ovlp 32)</text>
+          <text x="242" y="132" fill="#34d399" font-size="11">✓ 向量已快取 (鎖定)</text>
+
+          <rect x="420" y="65" width="182" height="82" rx="8" fill="#1e293b" stroke="#34d399" stroke-width="1.5" />
+          <text x="434" y="92" fill="#f8fafc" font-size="13" font-weight="700">... Chunk #(k-1)</text>
+          <text x="434" y="114" fill="#94a3b8" font-size="11">已滿 256 tokens</text>
+          <text x="434" y="132" fill="#34d399" font-size="11">✓ 向量已快取 (鎖定)</text>
+
+          <!-- Tail Chunks -->
+          <rect x="650" y="65" width="180" height="82" rx="8" fill="#1e293b" stroke="#fbbf24" stroke-width="2" />
+          <text x="664" y="92" fill="#f8fafc" font-size="13" font-weight="700">Chunk #k (原未滿尾部)</text>
+          <text x="664" y="114" fill="#cbd5e1" font-size="11">補入新訊息 tokens 填滿</text>
+          <text x="664" y="132" fill="#fbbf24" font-size="11">↻ 重新解碼 + 重新 Embed</text>
+
+          <rect x="845" y="65" width="180" height="82" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="2" />
+          <text x="859" y="92" fill="#f8fafc" font-size="13" font-weight="700">Chunk #(k+1) (新溢出)</text>
+          <text x="859" y="114" fill="#cbd5e1" font-size="11">含前塊 32-token overlap</text>
+          <text x="859" y="132" fill="#38bdf8" font-size="11">★ 新區塊首次 Embed</text>
+
+          <!-- Bottom Flow -->
+          <rect x="36" y="205" width="460" height="76" rx="8" fill="#1e293b" stroke="#334155" />
+          <text x="54" y="234" fill="#34d399" font-size="13" font-weight="700">直接沿用記憶體向量：stable_embeddings = old_embeddings[:first_changed]</text>
+          <text x="54" y="258" fill="#94a3b8" font-size="12">時間複雜度 O(1)，完全不觸發 GPU 模型推論</text>
+
+          <rect x="650" y="205" width="375" height="76" rx="8" fill="#1e293b" stroke="#fbbf24" />
+          <text x="668" y="234" fill="#fbbf24" font-size="13" font-weight="700">呼叫 _embed_texts(tail_texts, stage="add_incremental")</text>
+          <text x="668" y="258" fill="#94a3b8" font-size="12">僅計算 1~2 個尾部區塊 → Append 寫入 rag_incremental_updates.jsonl</text>
+
+          <line x1="310" y1="150" x2="310" y2="198" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-green)" />
+          <line x1="835" y1="150" x2="835" y2="198" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)" />
+        </svg>
+
+        <div class="code-ref">
+          <span>對應實作：<code>rag_adapter.py :: RAGAdapter.add_incremental_message (L335-L500)</code></span>
+          <span>增量日誌：<code>rag_incremental_updates.jsonl</code></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Diagram 3 -->
+    <section>
+      <h2><span class="num">3</span> 讀取與狀態演進管理：兩階段常數漏斗 + 時序重排 + 動態回合展開</h2>
+      <p class="sec-desc">
+        既然資料庫不刪除舊狀態，當使用者反覆變更狀態（例如：台北 → 台南 → 取消改台中）時，<code>Raw-RAG</code> 如何避免舊資料誤導 Reader？關鍵在於<strong>「檢索時用 256-token 緊湊區塊，送給 LLM 前依原始時間排序並動態還原為完整對話回合」</strong>。
+      </p>
+
+      <div class="diagram-box">
+        <svg viewBox="0 0 1080 390" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arr-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
+            </marker>
+          </defs>
+
+          <!-- Stage 1: Bloated Store -->
+          <rect x="16" y="24" width="215" height="340" rx="10" fill="#1e293b" stroke="#475569" />
+          <text x="32" y="52" fill="#f8fafc" font-size="14" font-weight="700">1. 膨脹的底層索引 (N 區塊)</text>
+          <text x="32" y="72" fill="#94a3b8" font-size="11.5">例如 LongMemEval 5,898 個區塊</text>
+
+          <rect x="30" y="92" width="187" height="52" rx="6" fill="#0f172a" stroke="#38bdf8" />
+          <text x="40" y="113" fill="#38bdf8" font-size="12" font-weight="700">Chunk #12 (1月 · Turn 4)</text>
+          <text x="40" y="131" fill="#cbd5e1" font-size="11.5">「我目前住在台北...」</text>
+
+          <rect x="30" y="156" width="187" height="44" rx="6" fill="#0f172a" stroke="#334155" />
+          <text x="40" y="182" fill="#64748b" font-size="11.5">Chunk #13 ~ #2409 (數千閒聊雜訊)</text>
+
+          <rect x="30" y="212" width="187" height="52" rx="6" fill="#0f172a" stroke="#fbbf24" />
+          <text x="40" y="233" fill="#fbbf24" font-size="12" font-weight="700">Chunk #2410 (8月 · Turn 612)</text>
+          <text x="40" y="251" fill="#cbd5e1" font-size="11.5">「下個月準備搬去台南...」</text>
+
+          <rect x="30" y="276" width="187" height="64" rx="6" fill="#0f172a" stroke="#34d399" />
+          <text x="40" y="297" fill="#34d399" font-size="12" font-weight="700">Chunk #4900 (11月 · Turn 1280)</text>
+          <text x="40" y="315" fill="#cbd5e1" font-size="11.5">「台南租屋取消，改搬去台中」</text>
+
+          <!-- Arrow 1 -> 2 -->
+          <line x1="231" y1="194" x2="268" y2="194" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr-blue)" />
+
+          <!-- Stage 2: Two-stage funnel -->
+          <rect x="274" y="24" width="240" height="340" rx="10" fill="#1e293b" stroke="#38bdf8" />
+          <text x="290" y="52" fill="#38bdf8" font-size="14" font-weight="700">2. 常數預算檢索漏斗</text>
+          <text x="290" y="72" fill="#94a3b8" font-size="11.5">將 O(N) 歷史壓縮為固定 O(k)</text>
+
+          <rect x="290" y="94" width="208" height="68" rx="8" fill="#0f172a" stroke="#334155" />
+          <text x="302" y="118" fill="#f8fafc" font-size="12.5" font-weight="700">Step A: 時序範圍過濾</text>
+          <text x="302" y="136" fill="#94a3b8" font-size="11">_filter_chunks_for_question_date</text>
+          <text x="302" y="152" fill="#7dd3fc" font-size="11">先依問題時間戳剔除未來或無效區間</text>
+
+          <rect x="290" y="176" width="208" height="72" rx="8" fill="#0f172a" stroke="#334155" />
+          <text x="302" y="200" fill="#f8fafc" font-size="12.5" font-weight="700">Step B: Dense 粗排 Top-128</text>
+          <text x="302" y="218" fill="#94a3b8" font-size="11">Qwen3-Embedding-4B 餘弦相似度</text>
+          <text x="302" y="236" fill="#34d399" font-size="11">從數千區塊快速召回 128 個候選</text>
+
+          <rect x="290" y="262" width="208" height="80" rx="8" fill="#0f172a" stroke="#38bdf8" />
+          <text x="302" y="286" fill="#f8fafc" font-size="12.5" font-weight="700">Step C: Reranker 精排 Top-15</text>
+          <text x="302" y="304" fill="#94a3b8" font-size="11">Qwen3-Reranker-4B Cross-Encoder</text>
+          <text x="302" y="322" fill="#fbbf24" font-size="11">支援 dynamic_top_k (門檻 &gt; 0.5)</text>
+
+          <!-- Arrow 2 -> 3 -->
+          <line x1="514" y1="194" x2="551" y2="194" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr-blue)" />
+
+          <!-- Stage 3: Temporal Reordering & Turn Expansion -->
+          <rect x="557" y="24" width="255" height="340" rx="10" fill="#1e293b" stroke="#a78bfa" />
+          <text x="573" y="52" fill="#a78bfa" font-size="14" font-weight="700">3. 時序重排 + 動態回合展開</text>
+          <text x="573" y="72" fill="#94a3b8" font-size="11.5">不改資料庫，在呈現期還原因果鏈</text>
+
+          <rect x="573" y="96" width="223" height="105" rx="8" fill="#0f172a" stroke="#a78bfa" />
+          <text x="585" y="120" fill="#f8fafc" font-size="12.5" font-weight="700">Step D: 依原始對話時序重排</text>
+          <text x="585" y="138" fill="#94a3b8" font-size="11">_selected_chunk_time_sort_key</text>
+          <text x="585" y="158" fill="#cbd5e1" font-size="11">按 (start_turn, start_token) 升冪排列：</text>
+          <text x="585" y="178" fill="#34d399" font-size="11.5" font-weight="700">#12 (1月) → #2410 (8月) → #4900 (11月)</text>
+
+          <rect x="573" y="218" width="223" height="122" rx="8" fill="#0f172a" stroke="#a78bfa" />
+          <text x="585" y="242" fill="#f8fafc" font-size="12.5" font-weight="700">Step E: 動態展開為完整對話回合</text>
+          <text x="585" y="260" fill="#94a3b8" font-size="11">_expand_chunk_to_turns (Display-Time)</text>
+          <text x="585" y="280" fill="#cbd5e1" font-size="11">透過 turn_spans 將 256-tok 切片</text>
+          <text x="585" y="298" fill="#cbd5e1" font-size="11">展開為完整 User/Assistant 對白並去重</text>
+          <text x="585" y="318" fill="#7dd3fc" font-size="11">消除切片截斷造成的語意破碎</text>
+
+          <!-- Arrow 3 -> 4 -->
+          <line x1="812" y1="194" x2="849" y2="194" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr-blue)" />
+
+          <!-- Stage 4: Reader LLM -->
+          <rect x="855" y="24" width="208" height="340" rx="10" fill="#1e293b" stroke="#34d399" />
+          <text x="871" y="52" fill="#34d399" font-size="14" font-weight="700">4. Reader LLM 推論</text>
+          <text x="871" y="72" fill="#94a3b8" font-size="11.5">固定 ~3.8K–5K Context</text>
+
+          <rect x="871" y="96" width="176" height="150" rx="8" fill="#0f172a" stroke="#334155" />
+          <text x="883" y="120" fill="#f8fafc" font-size="12" font-weight="700">Reader 看到的時序證據：</text>
+          <text x="883" y="144" fill="#94a3b8" font-size="11">1. [1月] 住台北 (舊)</text>
+          <text x="883" y="166" fill="#94a3b8" font-size="11">2. [8月] 預計搬台南 (過渡)</text>
+          <text x="883" y="188" fill="#34d399" font-size="11" font-weight="700">3. [11月] 取消台南改台中 (最新)</text>
+          <text x="883" y="220" fill="#cbd5e1" font-size="11">順序閱讀即可消歧最新狀態</text>
+
+          <rect x="871" y="262" width="176" height="80" rx="8" fill="rgba(52, 211, 153, 0.12)" stroke="#34d399" />
+          <text x="883" y="288" fill="#34d399" font-size="12.5" font-weight="700">MEME 32K 實測準確率：</text>
+          <text x="883" y="308" fill="#f8fafc" font-size="11.5">• Tracking (覆寫): 100%</text>
+          <text x="883" y="326" fill="#f8fafc" font-size="11.5">• Deletion (刪除): 100%</text>
+        </svg>
+
+        <div class="code-ref">
+          <span>時序過濾：<code>_filter_chunks_for_question_date (L1021-L1065)</code></span>
+          <span>時序重排：<code>_selected_chunk_time_sort_key (L750-L766)</code></span>
+          <span>動態展開：<code>_expand_chunk_to_turns (L1612-L1650)</code></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Diagram 4 -->
+    <section>
+      <h2><span class="num">4</span> 儲存與記憶體防爆：本機暫態釋放 vs. PostgreSQL <code>pgvector</code></h2>
+      <p class="sec-desc">
+        當單一評估集或對話膨脹至數百萬 tokens 時，若將所有浮點向量常駐於 RAM 或寫入單一 JSON 檔會導致記憶體與磁碟爆滿。<code>Raw-RAG</code> 提供兩條分流路徑：
+      </p>
+
+      <div class="diagram-box">
+        <svg viewBox="0 0 1060 270" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arr2" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#94a3b8" />
+            </marker>
+          </defs>
+
+          <!-- Root node -->
+          <rect x="20" y="95" width="210" height="80" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="2" />
+          <text x="36" y="128" fill="#f8fafc" font-size="13.5" font-weight="700">儲存後端路由 (rag.yaml)</text>
+          <text x="36" y="150" fill="#7dd3fc" font-size="12">storage.backend 設定</text>
+
+          <!-- Upper branch: Local Transient -->
+          <line x1="230" y1="115" x2="295" y2="65" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr2)" />
+          <rect x="302" y="22" width="340" height="92" rx="10" fill="#1e293b" stroke="#fbbf24" />
+          <text x="320" y="48" fill="#fbbf24" font-size="13" font-weight="700">路徑 A：本機超長對話模式 (local + persist_embeddings=False)</text>
+          <text x="320" y="70" fill="#cbd5e1" font-size="11.5">• rag_index.json 僅存文字與時序 Metadata（防止 JSON 膨脹至數 GB）</text>
+          <text x="320" y="90" fill="#cbd5e1" font-size="11.5">• 檢索時呼叫 _hydrate_conversation_embeddings 按需批次生成向量</text>
+
+          <line x1="642" y1="68" x2="695" y2="68" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr2)" />
+          <rect x="702" y="22" width="338" height="92" rx="10" fill="#1e293b" stroke="#34d399" />
+          <text x="720" y="48" fill="#34d399" font-size="13" font-weight="700">檢索完畢立即釋放 RAM</text>
+          <text x="720" y="70" fill="#cbd5e1" font-size="11.5">• 呼叫 release_conversation_search_cache()</text>
+          <text x="720" y="90" fill="#cbd5e1" font-size="11.5">• 移除 conv_index["embeddings"] 並執行 gc.collect()</text>
+
+          <!-- Lower branch: pgvector -->
+          <line x1="230" y1="155" x2="295" y2="205" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr2)" />
+          <rect x="302" y="156" width="340" height="92" rx="10" fill="#1e293b" stroke="#a78bfa" />
+          <text x="320" y="182" fill="#a78bfa" font-size="13" font-weight="700">路徑 B：外部資料庫模式 (storage.backend: "pgvector")</text>
+          <text x="320" y="204" fill="#cbd5e1" font-size="11.5">• 透過 RAGPgVectorStore.upsert_chunks 寫入 PostgreSQL</text>
+          <text x="320" y="224" fill="#cbd5e1" font-size="11.5">• 向量與文字持久化於外部資料表，本機程序零向量常駐負擔</text>
+
+          <line x1="642" y1="202" x2="695" y2="202" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr2)" />
+          <rect x="702" y="156" width="338" height="92" rx="10" fill="#1e293b" stroke="#38bdf8" />
+          <text x="720" y="182" fill="#38bdf8" font-size="13" font-weight="700">資料庫端 Cosine Similarity 粗排</text>
+          <text x="720" y="204" fill="#cbd5e1" font-size="11.5">• _get_pgvector_candidates 於 DB 端直接篩出 Top-128</text>
+          <text x="720" y="224" fill="#cbd5e1" font-size="11.5">• 本機僅對這 128 個區塊執行 Cross-Encoder Rerank</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- Diagram 5 -->
+    <section style="margin-bottom: 0;">
+      <h2><span class="num">5</span> 實測邊界：Raw-RAG 在哪些膨脹場景勝出？何處觸及極限？</h2>
+      <p class="sec-desc">
+        根據我們在 <code>MEME (32K-Filler)</code> 六大任務的實測分解，固定 <code>Top-15</code> 視窗能完美解決「局部狀態演進」，但在「跨超過 15 個區塊的全局統計聚合 (Aggregation)」會觸及視窗與計數瓶頸：
+      </p>
+
+      <div class="diagram-box">
+        <svg viewBox="0 0 1060 250" xmlns="http://www.w3.org/2000/svg">
+          <!-- Left: Task Bars -->
+          <text x="24" y="34" fill="#f8fafc" font-size="14" font-weight="700">MEME (32K-Filler) 各任務準確率實測對比 (Raw-RAG vs. 全庫 Oracle C)</text>
+
+          <!-- Tracking -->
+          <text x="24" y="72" fill="#cbd5e1" font-size="12.5">Tracking (狀態覆寫)</text>
+          <rect x="210" y="56" width="360" height="20" rx="4" fill="#34d399" />
+          <text x="580" y="71" fill="#34d399" font-size="12.5" font-weight="700">100.0% (Oracle C: 80.0%)</text>
+
+          <!-- Deletion -->
+          <text x="24" y="106" fill="#cbd5e1" font-size="12.5">Deletion (狀態刪除/取消)</text>
+          <rect x="210" y="90" width="360" height="20" rx="4" fill="#34d399" />
+          <text x="580" y="105" fill="#34d399" font-size="12.5" font-weight="700">100.0% (Oracle C: 100.0%)</text>
+
+          <!-- Threshold -->
+          <text x="24" y="140" fill="#cbd5e1" font-size="12.5">Threshold (累積門檻判斷)</text>
+          <rect x="210" y="124" width="288" height="20" rx="4" fill="#38bdf8" />
+          <text x="508" y="139" fill="#38bdf8" font-size="12.5" font-weight="700">80.0% (Oracle C: 80.0%)</text>
+
+          <!-- Cascade -->
+          <text x="24" y="174" fill="#cbd5e1" font-size="12.5">Cascade (跨實體連鎖更新)</text>
+          <rect x="210" y="158" width="288" height="20" rx="4" fill="#38bdf8" />
+          <text x="508" y="173" fill="#38bdf8" font-size="12.5" font-weight="700">80.0% (Oracle C: 80.0%)</text>
+
+          <!-- Implicit -->
+          <text x="24" y="208" fill="#cbd5e1" font-size="12.5">Implicit (隱式約束推理)</text>
+          <rect x="210" y="192" width="180" height="20" rx="4" fill="#fbbf24" />
+          <text x="400" y="207" fill="#fbbf24" font-size="12.5" font-weight="700">50.0% (Oracle C: 50.0%)</text>
+
+          <!-- Aggregation -->
+          <text x="24" y="240" fill="#f87171" font-size="12.5" font-weight="700">Aggregation (全局統計計數)</text>
+          <rect x="210" y="224" width="72" height="20" rx="4" fill="#f87171" />
+          <text x="292" y="239" fill="#f87171" font-size="12.5" font-weight="700">20.0% ← 固定 Top-15 視窗與新舊狀態並存干擾計數</text>
+
+          <!-- Right explanation box -->
+          <rect x="700" y="48" width="340" height="196" rx="10" fill="#0f172a" stroke="#f87171" />
+          <text x="718" y="76" fill="#f87171" font-size="13.5" font-weight="700">為什麼 Aggregation 是唯一短板？</text>
+          <text x="718" y="102" fill="#cbd5e1" font-size="12">1. 當問題要求「統計全歷史所有符合條件</text>
+          <text x="718" y="120" fill="#cbd5e1" font-size="12">   的事件總數」，且碎片散落 &gt;15 個區塊</text>
+          <text x="718" y="138" fill="#cbd5e1" font-size="12">   時，固定 Top-15 無法一次撈齊。</text>
+          <text x="718" y="166" fill="#cbd5e1" font-size="12">2. 新舊狀態同時進入 Top-15 時，小型</text>
+          <text x="718" y="184" fill="#cbd5e1" font-size="12">   Reader 容易將「已取消的舊紀錄」重複</text>
+          <text x="718" y="202" fill="#cbd5e1" font-size="12">   計入總數（論文建議此處才需結構化狀態表）。</text>
+        </svg>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

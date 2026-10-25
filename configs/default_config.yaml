@@ -1,0 +1,48 @@
+# agent-raw-rag-mcp Default Configuration
+environment:
+  hf_home: "/Volumes/Samsung980/hf-home/"
+  backend: "mlx"
+
+chunking:
+  encoding_name: "cl100k_base"
+  chunk_size: 256
+  chunk_overlap: 32
+  expand_turns_on_display: true
+  dedup_turns_on_display: true
+
+sanitizer:
+  keep_user_text_full: true
+  keep_assistant_text_full: true
+  max_thinking_tokens: 512
+  failed_bash_tail_lines: 15
+  strip_read_file_stdout: true
+  strip_full_diffs: true
+
+retrieval:
+  embedding_model: "Qwen/Qwen3-Embedding-4B"
+  reranker_model: "Qwen/Qwen3-Reranker-4B"
+  candidate_top_k: 128
+  rerank_top_k: 15
+  chronological_reorder: true
+  dynamic_top_k:
+    enabled: false
+    score_threshold: 0.5
+    fallback_top_k: 3
+
+sources:
+  claude_code:
+    enabled: true
+    projects_dir: "~/.claude/projects"
+  codex:
+    enabled: true
+    sessions_dir: "~/.codex/sessions"
+  opencode:
+    enabled: true
+    sqlite_path: "~/.local/share/opencode/opencode.db"
+  oh_my_pi:
+    enabled: true
+    sessions_dir: "~/.omp/agent/sessions"
+
+storage:
+  backend: "sqlite" # "sqlite" or "pgvector"
+  sqlite_path: "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/data/raw_rag.db"

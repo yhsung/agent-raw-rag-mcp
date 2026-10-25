@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>四大 CLI Coding Agent 接入 Raw-RAG 架構藍圖 (Claude Code / Codex / OpenCode / Oh My Pi)</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --panel-alt: #162032;
+      --code-bg: #0b1120;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.14);
+      --green: #34d399;
+      --green-soft: rgba(52, 211, 153, 0.14);
+      --amber: #fbbf24;
+      --amber-soft: rgba(251, 191, 36, 0.14);
+      --red: #f87171;
+      --red-soft: rgba(248, 113, 113, 0.14);
+      --purple: #a78bfa;
+      --purple-soft: rgba(167, 139, 250, 0.14);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Noto Sans TC", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 36px 24px 64px;
+    }
+
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+      margin-bottom: 32px;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #ffffff;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+      max-width: 980px;
+    }
+
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .metric-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+    }
+
+    .metric-card .label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .metric-card .value {
+      font-size: 21px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+
+    .metric-card .desc {
+      font-size: 13px;
+      color: #cbd5e1;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 28px;
+    }
+
+    section h2 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    section h2 .num {
+      background: var(--accent);
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 800;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .sec-desc {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 22px;
+    }
+
+    code {
+      font-family: "SF Mono", "JetBrains Mono", Menlo, monospace;
+      font-size: 12.5px;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: #7dd3fc;
+    }
+
+    pre {
+      font-family: "SF Mono", "JetBrains Mono", Menlo, monospace;
+      font-size: 12.5px;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      overflow-x: auto;
+      color: #e2e8f0;
+      line-height: 1.55;
+    }
+
+    .hl-key { color: #7dd3fc; }
+    .hl-str { color: #86efac; }
+    .hl-num { color: #fcd34d; }
+    .hl-comment { color: #64748b; font-style: italic; }
+
+    .diagram-box {
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      overflow-x: auto;
+    }
+
+    svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+    }
+
+    @media (max-width: 960px) {
+      .grid-2, .grid-4 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+    }
+
+    .card-title {
+      font-size: 15.5px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .pill {
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    .pill-blue { background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.35); }
+    .pill-green { background: var(--green-soft); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.35); }
+    .pill-amber { background: var(--amber-soft); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.35); }
+    .pill-purple { background: var(--purple-soft); color: var(--purple); border: 1px solid rgba(167, 139, 250, 0.35); }
+    .pill-red { background: var(--red-soft); color: var(--red); border: 1px solid rgba(248, 113, 113, 0.35); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+      background: var(--panel-alt);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    th, td {
+      padding: 14px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    th {
+      background: rgba(15, 23, 42, 0.65);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">System Integration Blueprint · Apple Silicon (64GB Unified Memory)</div>
+      <h1>Claude Code · Codex · OpenCode · Oh My Pi 接入 Raw-RAG 架構藍圖</h1>
+      <p class="subtitle">
+        將四套常用 CLI Coding Agent 的本機對話紀錄統一接入單一 <code>agent-raw-rag-mcp</code> 服務：保留 <code>Raw-RAG</code> <strong>「寫入端零 LLM 呼叫、增量尾部切塊、兩階段檢索 + 動態回合展開」</strong>核心，同時針對 Coding 場景濾除巨型 Tool Stdout 噪音，並直接以 CLI Agent 自身的主力模型作為 Reader LLM。
+      </p>
+    </header>
+
+    <div class="summary-strip">
+      <div class="metric-card">
+        <div class="label">跨工具記憶互通</div>
+        <div class="value">4 Agents → 1 Index</div>
+        <div class="desc">Claude Code、Codex、OpenCode、Oh My Pi 共用同一專案記憶池，跨工具切換不斷脈絡。</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">本機 Reader LLM 記憶體開銷</div>
+        <div class="value" style="color: var(--green);">0 GB (免跑 Reader Server)</div>
+        <div class="desc">直接由 CLI 工具本身的 Claude / GPT / Gemini 模型擔任 Reader，省去最大宗 KV Cache 負擔。</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">MLX 檢索雙模型統一記憶體佔用</div>
+        <div class="value">~4.8 GB (按需喚醒)</div>
+        <div class="desc"><code>Qwen3-Embedding-4B</code> + <code>Qwen3-Reranker-4B</code> (4-bit MLX)，無長上下文 KV 膨脹。</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">完美免疫 <code>/compact</code> 失憶</div>
+        <div class="value" style="color: var(--purple);">100% 原始對白隨時救援</div>
+        <div class="desc">當 Session 觸發 <code>/compact</code> 損失 21.9% 細節時，可隨時從 Raw-RAG 撈回完整歷史回合。</div>
+      </div>
+    </div>
+
+    <!-- Section 1: Master Architecture SVG -->
+    <section>
+      <h2><span class="num">1</span> 系統總體架構圖：四端增量採集 → 確定性降噪 → 統一 MCP 檢索</h2>
+      <p class="sec-desc">
+        四套 CLI 工具各自透過 Hook 或增量游標（Cursor）把新完成的對話回合推入寫入管線；讀取時則統一透過 MCP 工具 <code>raw_rag_search</code> 取得經過時序重排與完整回合展開的 Top-15 記憶。
+      </p>
+
+      <div class="diagram-box">
+        <svg viewBox="0 0 1120 430" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arr-b" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
+            </marker>
+            <marker id="arr-g" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399" />
+            </marker>
+            <marker id="arr-a" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#fbbf24" />
+            </marker>
+          </defs>
+
+          <!-- Column 1: 4 CLI Agents -->
+          <rect x="16" y="20" width="250" height="390" rx="12" fill="#1e293b" stroke="#475569" />
+          <text x="32" y="48" fill="#f8fafc" font-size="14" font-weight="700">1. 四大 CLI Agents (寫入源 &amp; Reader)</text>
+
+          <rect x="30" y="66" width="222" height="72" rx="8" fill="#0b1120" stroke="#38bdf8" />
+          <text x="42" y="88" fill="#38bdf8" font-size="12.5" font-weight="700">Claude Code (claude)</text>
+          <text x="42" y="106" fill="#cbd5e1" font-size="10.5">~/.claude/projects/&lt;slug&gt;/*.jsonl</text>
+          <text x="42" y="124" fill="#94a3b8" font-size="10.5">觸發：Stop Hook + MCP Client</text>
+
+          <rect x="30" y="150" width="222" height="72" rx="8" fill="#0b1120" stroke="#34d399" />
+          <text x="42" y="172" fill="#34d399" font-size="12.5" font-weight="700">Codex CLI (codex)</text>
+          <text x="42" y="190" fill="#cbd5e1" font-size="10.5">~/.codex/sessions/**/rollout-*.jsonl</text>
+          <text x="42" y="208" fill="#94a3b8" font-size="10.5">觸發：config.toml notify + MCP</text>
+
+          <rect x="30" y="234" width="222" height="72" rx="8" fill="#0b1120" stroke="#fbbf24" />
+          <text x="42" y="256" fill="#fbbf24" font-size="12.5" font-weight="700">OpenCode (opencode)</text>
+          <text x="42" y="274" fill="#cbd5e1" font-size="10.5">~/.local/share/opencode/opencode.db</text>
+          <text x="42" y="292" fill="#94a3b8" font-size="10.5">觸發：session.idle Plugin + SQLite 游標</text>
+
+          <rect x="30" y="318" width="222" height="76" rx="8" fill="#0b1120" stroke="#a78bfa" />
+          <text x="42" y="340" fill="#a78bfa" font-size="12.5" font-weight="700">Oh My Pi (omp / pi)</text>
+          <text x="42" y="358" fill="#cbd5e1" font-size="10.5">~/.omp/agent/sessions/&lt;slug&gt;/*.jsonl</text>
+          <text x="42" y="376" fill="#94a3b8" font-size="10.5">觸發：Extension turn_end / compact</text>
+
+          <!-- Arrows Col 1 -> Col 2 -->
+          <line x1="266" y1="145" x2="308" y2="145" stroke="#fbbf24" stroke-width="2" marker-end="url(#arr-a)" />
+          <text x="270" y="135" fill="#fbbf24" font-size="10" font-weight="700">增量寫入</text>
+
+          <!-- Column 2: Ingestion & Deterministic Sanitizer -->
+          <rect x="314" y="20" width="265" height="390" rx="12" fill="#1e293b" stroke="#fbbf24" />
+          <text x="330" y="48" fill="#fbbf24" font-size="14" font-weight="700">2. 零 LLM 增量寫入管線 O(ΔL)</text>
+          <text x="330" y="68" fill="#94a3b8" font-size="11">保留對白原文，過濾巨型 Tool Stdout</text>
+
+          <rect x="330" y="84" width="233" height="96" rx="8" fill="#0b1120" stroke="#fbbf24" />
+          <text x="342" y="106" fill="#fcd34d" font-size="12" font-weight="700">Step A: 確定性降噪器 (Sanitizer)</text>
+          <text x="342" y="126" fill="#86efac" font-size="10.5">✓ 100% 保留 User Prompt 與 Assistant 對白</text>
+          <text x="342" y="144" fill="#86efac" font-size="10.5">✓ 保留修改檔案路徑、Bash 命令與錯誤尾部</text>
+          <text x="342" y="162" fill="#f87171" font-size="10.5">✗ 剝除數千行 Read 檔案全文 / 巨型 Diff</text>
+
+          <rect x="330" y="196" width="233" height="96" rx="8" fill="#0b1120" stroke="#38bdf8" />
+          <text x="342" y="218" fill="#38bdf8" font-size="12" font-weight="700">Step B: 增量尾部切塊 (Tail Chunker)</text>
+          <text x="342" y="238" fill="#cbd5e1" font-size="10.5">• 沿用 add_incremental_message 機制</text>
+          <text x="342" y="256" fill="#cbd5e1" font-size="10.5">• 鎖定已滿 256-tok 區塊 (stable_chunks)</text>
+          <text x="342" y="274" fill="#cbd5e1" font-size="10.5">• 僅重切尾部區塊 (overlap 32) + turn_spans</text>
+
+          <rect x="330" y="308" width="233" height="84" rx="8" fill="#0b1120" stroke="#34d399" />
+          <text x="342" y="330" fill="#34d399" font-size="12" font-weight="700">Step C: 統一儲存庫 (Storage)</text>
+          <text x="342" y="350" fill="#cbd5e1" font-size="10.5">• SQLite + Vector / PostgreSQL pgvector</text>
+          <text x="342" y="368" fill="#cbd5e1" font-size="10.5">• 索引標籤：project_path, agent, branch, date</text>
+
+          <line x1="579" y1="215" x2="621" y2="215" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr-b)" />
+
+          <!-- Column 3: MLX Retrieval & Expansion -->
+          <rect x="627" y="20" width="265" height="390" rx="12" fill="#1e293b" stroke="#38bdf8" />
+          <text x="643" y="48" fill="#38bdf8" font-size="14" font-weight="700">3. 本機 MLX 兩階段檢索核心</text>
+          <text x="643" y="68" fill="#94a3b8" font-size="11">常駐記憶體僅 ~4.8 GB，零 LLM 生成延遲</text>
+
+          <rect x="643" y="84" width="233" height="72" rx="8" fill="#0b1120" stroke="#334155" />
+          <text x="655" y="106" fill="#f8fafc" font-size="12" font-weight="700">1. 專案與時序預過濾</text>
+          <text x="655" y="126" fill="#cbd5e1" font-size="10.5">依 project_path (預設當前 repo) 與日期範圍</text>
+          <text x="655" y="142" fill="#7dd3fc" font-size="10.5">_filter_chunks_for_question_date</text>
+
+          <rect x="643" y="170" width="233" height="72" rx="8" fill="#0b1120" stroke="#38bdf8" />
+          <text x="655" y="192" fill="#38bdf8" font-size="12" font-weight="700">2. Dense 粗排 Top-128</text>
+          <text x="655" y="212" fill="#cbd5e1" font-size="10.5">MLX Qwen3-Embedding-4B (4-bit)</text>
+          <text x="655" y="228" fill="#94a3b8" font-size="10.5">餘弦相似度快速召回 128 個 256-tok 切片</text>
+
+          <rect x="643" y="256" width="233" height="72" rx="8" fill="#0b1120" stroke="#a78bfa" />
+          <text x="655" y="278" fill="#a78bfa" font-size="12" font-weight="700">3. Cross-Encoder 精排 Top-15</text>
+          <text x="655" y="298" fill="#cbd5e1" font-size="10.5">MLX Qwen3-Reranker-4B (4-bit)</text>
+          <text x="655" y="314" fill="#94a3b8" font-size="10.5">支援 dynamic_top_k (score &gt; 0.5 自動截斷)</text>
+
+          <rect x="643" y="342" width="233" height="52" rx="8" fill="#0b1120" stroke="#34d399" />
+          <text x="655" y="364" fill="#34d399" font-size="12" font-weight="700">4. 時序升冪重排 + 展開完整 Turn</text>
+          <text x="655" y="382" fill="#cbd5e1" font-size="10.5">_expand_chunk_to_turns 還原完整問答回合</text>
+
+          <!-- Column 4: MCP Output back to Agents -->
+          <line x1="892" y1="215" x2="928" y2="215" stroke="#34d399" stroke-width="2" marker-end="url(#arr-g)" />
+
+          <rect x="934" y="20" width="170" height="390" rx="12" fill="#1e293b" stroke="#34d399" />
+          <text x="948" y="48" fill="#34d399" font-size="14" font-weight="700">4. 統一 MCP 介面</text>
+          <text x="948" y="68" fill="#94a3b8" font-size="11">raw-rag-mcp</text>
+
+          <rect x="946" y="88" width="146" height="135" rx="8" fill="#0b1120" stroke="#34d399" />
+          <text x="956" y="110" fill="#86efac" font-size="11.5" font-weight="700">MCP Tools:</text>
+          <text x="956" y="132" fill="#f8fafc" font-size="10.5">• raw_rag_search()</text>
+          <text x="956" y="152" fill="#f8fafc" font-size="10.5">• raw_rag_recent()</text>
+          <text x="956" y="172" fill="#f8fafc" font-size="10.5">• raw_rag_ingest()</text>
+          <text x="956" y="196" fill="#94a3b8" font-size="10">回傳 ~3.8K tokens</text>
+          <text x="956" y="210" fill="#94a3b8" font-size="10">完整時序對話證據</text>
+
+          <rect x="946" y="240" width="146" height="152" rx="8" fill="rgba(52, 211, 153, 0.1)" stroke="#34d399" />
+          <text x="956" y="264" fill="#34d399" font-size="11.5" font-weight="700">由當前 CLI Agent</text>
+          <text x="956" y="282" fill="#34d399" font-size="11.5" font-weight="700">擔任 Reader LLM：</text>
+          <text x="956" y="306" fill="#cbd5e1" font-size="10.5">• Claude Opus / Sonnet</text>
+          <text x="956" y="324" fill="#cbd5e1" font-size="10.5">• GPT-5 / o3</text>
+          <text x="956" y="342" fill="#cbd5e1" font-size="10.5">• Gemini 2.5 Pro</text>
+          <text x="956" y="368" fill="#fcd34d" font-size="10">直接閱讀原始演進鏈！</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- Section 2: Deterministic Sanitizer for Coding Logs -->
+    <section>
+      <h2><span class="num">2</span> Coding Agent 專屬改造：為什麼要先過一層「確定性降噪器 (Deterministic Sanitizer)」？</h2>
+      <p class="sec-desc">
+        在你的機器上，<code>~/.local/share/opencode/opencode.db</code> 高達 <strong>3.19 GB</strong>，因為 Coding Agent 的原始紀錄有 90% 以上是 <code>Read</code> 檔案全文、<code>grep</code> 列表或長篇編譯輸出。若直接切塊會嚴重稀釋向量檢索精度。我們在<strong>不使用 LLM、100% 保留人類與 Agent 對白原文</strong>的前提下，對 Tool 紀錄做確定性瘦身：
+      </p>
+
+      <div class="grid-2">
+        <div class="card" style="border-color: rgba(248, 113, 113, 0.45);">
+          <div class="card-header">
+            <span class="card-title">原始 Session JSONL / SQLite (未過濾：90% 噪音)</span>
+            <span class="pill pill-red">直接切塊會淹沒檢索器</span>
+          </div>
+          <pre>{
+  <span class="hl-key">"role"</span>: <span class="hl-str">"user"</span>,
+  <span class="hl-key">"content"</span>: <span class="hl-str">"為什麼 MEME No-Filler 的 Complete-Store Oracle 分數是 0？"</span>
+}
+{
+  <span class="hl-key">"role"</span>: <span class="hl-str">"assistant"</span>,
+  <span class="hl-key">"tool_use"</span>: <span class="hl-str">"Read(rag_adapter.py, lines 1..1980)"</span>,
+  <span class="hl-key">"tool_result"</span>: <span class="hl-str">"... [長達 68,000 字元的 Python 原始碼傾印，佔用 85 個 Chunks] ..."</span>
+}
+{
+  <span class="hl-key">"role"</span>: <span class="hl-str">"assistant"</span>,
+  <span class="hl-key">"content"</span>: <span class="hl-str">"找到了！因為 conv_id 多了 meme_nofiller_ 前綴，導致字典查找為空。"</span>
+}</pre>
+        </div>
+
+        <div class="card" style="border-color: rgba(52, 211, 153, 0.45);">
+          <div class="card-header">
+            <span class="card-title">經 Deterministic Sanitizer 轉換後送入 Raw-RAG 的文件</span>
+            <span class="pill pill-green">對白 100% 原文 + 動作路徑保留</span>
+          </div>
+          <pre>Conversation ID: claude_raw-rag_8f91a2
+Project: /Volumes/Samsung970EVOPlus/dev-projects/raw-rag | Agent: claude-code
+
+[2026-10-25 21:10] User: 為什麼 MEME No-Filler 的 Complete-Store Oracle 分數是 0？
+[2026-10-25 21:11] Assistant (Actions): [Read] rag_adapter.py | [Edit] run_meme_nofiller_reverse_ablations.py | [Bash] pytest (exit 0)
+[2026-10-25 21:12] Assistant: 找到了！因為 conv_id 多了 meme_nofiller_ 前綴，導致字典查找為空。已在 normalize_conv_id() 加入前綴剝除邏輯並驗證通過。</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: How it solves /compact amnesia -->
+    <section>
+      <h2><span class="num">3</span> 核心價值：徹底解決 CLI Agent <code>/compact</code>（上下文壓縮）造成的失憶問題</h2>
+      <p class="sec-desc">
+        當你在 Claude Code、OpenCode 或 Oh My Pi 長時間開發並觸發 <code>/compact</code> 時，系統內建的 LLM 摘要正是論文實證會造成 <strong>21.9% 永久表徵損失</strong> 的有損壓縮（丟失具體變數名、嘗試過的失敗方案與修改原因）。接上 <code>Raw-RAG</code> 後形成「雙軌記憶」：
+      </p>
+
+      <div class="diagram-box">
+        <svg viewBox="0 0 1060 230" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arr3" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399" />
+            </marker>
+            <marker id="arr3-r" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#f87171" />
+            </marker>
+          </defs>
+
+          <rect x="20" y="65" width="205" height="100" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="2" />
+          <text x="36" y="96" fill="#f8fafc" font-size="13.5" font-weight="700">長對話開發 Session</text>
+          <text x="36" y="118" fill="#cbd5e1" font-size="11.5">累積 150K tokens 歷史</text>
+          <text x="36" y="138" fill="#94a3b8" font-size="11">即將觸發 Context 上限</text>
+
+          <!-- Upper track: Built-in /compact -->
+          <line x1="225" y1="90" x2="290" y2="55" stroke="#f87171" stroke-width="2" marker-end="url(#arr3-r)" />
+          <rect x="298" y="16" width="350" height="84" rx="10" fill="#1e293b" stroke="#f87171" />
+          <text x="314" y="42" fill="#f87171" font-size="13" font-weight="700">軌道 A：Agent 內建 /compact (有損滾動摘要)</text>
+          <text x="314" y="64" fill="#cbd5e1" font-size="11.5">• 壓縮成 2K tokens 摘要留在主視窗，但遺失 21.9% 細節</text>
+          <text x="314" y="84" fill="#cbd5e1" font-size="11.5">• 忘記 2 小時前已證實無效的參數或特定錯誤訊息</text>
+
+          <!-- Lower track: Raw-RAG sidecar -->
+          <line x1="225" y1="140" x2="290" y2="175" stroke="#34d399" stroke-width="2" marker-end="url(#arr3)" />
+          <rect x="298" y="128" width="350" height="86" rx="10" fill="#1e293b" stroke="#34d399" />
+          <text x="314" y="154" fill="#34d399" font-size="13" font-weight="700">軌道 B：Raw-RAG 旁路原文索引 (零表徵損失)</text>
+          <text x="314" y="176" fill="#cbd5e1" font-size="11.5">• 壓縮前每一輪對白皆已增量寫入 256-token 區塊索引</text>
+          <text x="314" y="196" fill="#cbd5e1" font-size="11.5">• turn_spans 完整保留每一輪對話的先後順序與原文</text>
+
+          <line x1="648" y1="171" x2="705" y2="125" stroke="#34d399" stroke-width="2" marker-end="url(#arr3)" />
+
+          <!-- Rescue Box -->
+          <rect x="712" y="42" width="328" height="145" rx="10" fill="rgba(52, 211, 153, 0.1)" stroke="#34d399" stroke-width="2" />
+          <text x="730" y="72" fill="#34d399" font-size="14" font-weight="700">壓縮後精準救援 (On-Demand Recall)</text>
+          <text x="730" y="96" fill="#f8fafc" font-size="12">當 Agent 需要回想壓縮前的具體細節時：</text>
+          <text x="730" y="118" fill="#7dd3fc" font-size="11.5">呼叫 raw_rag_search(query="...")</text>
+          <text x="730" y="140" fill="#cbd5e1" font-size="11.5">→ 瞬間取回壓縮前的 Top-15 完整原始對話回合</text>
+          <text x="730" y="160" fill="#cbd5e1" font-size="11.5">→ 兼具「短 Context 速度」與「100% 原文記憶」！</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- Section 4: Exact Integration Specs for all 4 CLI Tools -->
+    <section>
+      <h2><span class="num">4</span> 四大工具接線規格與設定檔藍圖</h2>
+      <p class="sec-desc">
+        根據你機器上的實際安裝路徑，以下為四套 CLI 工具接入 <code>agent-raw-rag-mcp</code> 的具體設定方式：
+      </p>
+
+      <div class="grid-4">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">1. Claude Code (<code>~/.claude/settings.json</code>)</span>
+            <span class="pill pill-blue">Hook + MCP</span>
+          </div>
+          <p style="font-size: 13px; color: var(--muted);">
+            利用 <code>Stop</code> Hook 在每輪回答完成時觸發背景增量更新（只讀新增 byte offset），並掛載 MCP Server：
+          </p>
+          <pre>{
+  <span class="hl-key">"hooks"</span>: {
+    <span class="hl-key">"Stop"</span>: [{
+      <span class="hl-key">"hooks"</span>: [{
+        <span class="hl-key">"type"</span>: <span class="hl-str">"command"</span>,
+        <span class="hl-key">"command"</span>: <span class="hl-str">"raw-rag-ingest --agent claude --incremental"</span>
+      }]
+    }]
+  },
+  <span class="hl-key">"mcpServers"</span>: {
+    <span class="hl-key">"raw-rag"</span>: {
+      <span class="hl-key">"command"</span>: <span class="hl-str">"raw-rag-mcp"</span>
+    }
+  }
+}</pre>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">2. Codex CLI (<code>~/.codex/config.toml</code>)</span>
+            <span class="pill pill-green">notify + MCP</span>
+          </div>
+          <p style="font-size: 13px; color: var(--muted);">
+            利用 Codex 原生 <code>notify</code> 機制在每輪 Turn 結束時同步 <code>~/.codex/sessions/**/*.jsonl</code> 尾部區塊：
+          </p>
+          <pre><span class="hl-comment"># 每輪對話完成自動執行增量切塊與嵌入</span>
+<span class="hl-key">notify</span> = [<span class="hl-str">"raw-rag-ingest"</span>, <span class="hl-str">"--agent"</span>, <span class="hl-str">"codex"</span>, <span class="hl-str">"--incremental"</span>]
+
+[mcp_servers.raw_rag]
+<span class="hl-key">command</span> = <span class="hl-str">"raw-rag-mcp"</span>
+<span class="hl-key">args</span> = []</pre>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">3. OpenCode (<code>~/.config/opencode/opencode.json</code>)</span>
+            <span class="pill pill-amber">SQLite 游標 + MCP</span>
+          </div>
+          <p style="font-size: 13px; color: var(--muted);">
+            針對 3.19 GB 的 <code>opencode.db</code>，依 <code>message.time_created &gt; last_cursor</code> 只抽取文字 Part（跳過巨型 Tool output）：
+          </p>
+          <pre>{
+  <span class="hl-key">"mcp"</span>: {
+    <span class="hl-key">"raw-rag"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-str">"local"</span>,
+      <span class="hl-key">"command"</span>: [<span class="hl-str">"raw-rag-mcp"</span>],
+      <span class="hl-key">"enabled"</span>: <span class="hl-num">true</span>
+    }
+  }
+}</pre>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">4. Oh My Pi (<code>~/.omp/agent/config.yml</code> &amp; Extension)</span>
+            <span class="pill pill-purple">Extension + MCP</span>
+          </div>
+          <p style="font-size: 13px; color: var(--muted);">
+            透過 <code>~/.omp/agent/extensions/raw-rag.ts</code> 監聽 <code>turn_end</code> 與 <code>session_compact</code>，壓縮時自動建立檢查點：
+          </p>
+          <pre><span class="hl-comment">// ~/.omp/agent/extensions/raw-rag.ts</span>
+export default function (pi) {
+  pi.on(<span class="hl-str">"turn_end"</span>, async () =&gt; {
+    await pi.exec(<span class="hl-str">"raw-rag-ingest"</span>, [<span class="hl-str">"--agent"</span>, <span class="hl-str">"omp"</span>, <span class="hl-str">"--incremental"</span>]);
+  });
+}</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 5: Proposed Project Layout -->
+    <section style="margin-bottom: 0;">
+      <h2><span class="num">5</span> 落地實作藍圖：<code>/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp</code></h2>
+      <p class="sec-desc">
+        若要將此設計實作為常駐工具，建議於 <code>/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp</code> 建立以下輕量架構：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>模組檔案</th>
+            <th>核心職責</th>
+            <th>對應 <code>Litmeb/RAW-RAG</code> 機制</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>src/parsers/{claude,codex,opencode,omp}.py</code></td>
+            <td>讀取四套工具的 JSONL / SQLite，維護增量游標（<code>byte_offset</code> / <code>last_rowid</code>），並執行 Deterministic Sanitizer 剝除長篇 Tool stdout。</td>
+            <td>對應 <code>_format_conversation</code> 與 <code>_format_message_line</code>。</td>
+          </tr>
+          <tr>
+            <td><code>src/engine/incremental_chunker.py</code></td>
+            <td>維護 <code>stable_chunks</code> 與尾部可變 <code>tail_chunks</code>（256 tokens, overlap 32），建立 <code>turn_spans</code> 與日期索引。</td>
+            <td>直接移植 <code>RAGAdapter.add_incremental_message</code> 與 <code>_build_turn_context</code>。</td>
+          </tr>
+          <tr>
+            <td><code>src/engine/mlx_retriever.py</code></td>
+            <td>載入 MLX <code>Qwen3-Embedding-4B</code> 與 <code>Qwen3-Reranker-4B</code>，執行時序過濾 → Dense Top-128 → Rerank Top-15 → 時序升冪重排 → 展開完整對話回合。</td>
+            <td>移植 <code>_filter_chunks_for_question_date</code>、<code>_selected_chunk_time_sort_key</code> 與 <code>_expand_chunk_to_turns</code>。</td>
+          </tr>
+          <tr>
+            <td><code>src/mcp_server.py</code></td>
+            <td>提供標準 stdio MCP 服務（<code>raw_rag_search</code>、<code>raw_rag_ingest</code>、<code>raw_rag_status</code>），一鍵掛載至四大 CLI 工具。</td>
+            <td>取代原本實驗框架的內部 Reader 呼叫，直接將 <code>_format_context</code> 結果回傳給 CLI Agent。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+</body>
+</html>

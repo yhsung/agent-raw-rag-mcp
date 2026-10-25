@@ -1,0 +1,153 @@
+# `agent-raw-rag-mcp` 詳細技術規劃與介面規格（Implementation Plan）
+
+本文件定義 `agent-raw-rag-mcp` 的完整資料結構、四大 CLI 解析器規格、儲存與檢索演算法，以及 MCP 工具介面，供後續在 **Antigravity** 或 **Oh My Pi (`omp`)** 中直接按表施工。
+
+---
+
+## 1. 目錄結構規劃
+
+```text
+/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/
+├── AGENTS.md                        # AI Agent 核心規範與架構不變量
+├── CLAUDE.md                        # Symlink -> AGENTS.md (相容 Claude Code)
+├── PLAN.md                          # 本技術規劃書
+├── pyproject.toml                   # uv 專案與 CLI entrypoints 設定
+├── configs/
+│   ├── default_config.yaml          # 切塊 (256/32)、Top-k (128/15)、MLX 模型與路徑設定
+│   ├── claude_hooks_snippet.json    # Claude Code ~/.claude/settings.json 接線設定
+│   ├── codex_config_snippet.toml    # Codex ~/.codex/config.toml 接線設定
+│   ├── opencode_snippet.json        # OpenCode ~/.config/opencode/opencode.json 接線設定
+│   └── omp_extension_raw_rag.ts     # Oh My Pi ~/.omp/agent/extensions/raw-rag.ts 擴充腳本
+├── reports/
+│   ├── raw-rag-cli-agents-blueprint.html      # 四大 CLI Agent 整合架構藍圖 (HTML)
+│   ├── raw-rag-data-payload-explained.html    # Raw-RAG 資料結構與檢索負載圖解 (HTML)
+│   ├── raw-rag-scaling-architecture.html      # Raw-RAG 膨脹管理與架構圖解 (HTML)
+│   └── raw-rag-reproduction-report.md         # 論文完整復現與反向消融報告 (Markdown)
+├── src/
+│   └── agent_raw_rag/
+│       ├── __init__.py
+│       ├── config.py                # 讀取設定與環境變數 (強制 HF_HOME=/Volumes/Samsung980/hf-home/)
+│       ├── models.py                # NormalizedTurn,SessionState, ChunkRecord 資料模型
+│       ├── parsers/
+│       │   ├── __init__.py
+│       │   ├── sanitizer.py         # Deterministic Sanitizer (濾除巨型 Tool stdout，保留對白與動作摘要)
+│       │   ├── claude_parser.py     # 解析 ~/.claude/projects/<slug>/*.jsonl (增量 byte_offset)
+│       │   ├── codex_parser.py      # 解析 ~/.codex/sessions/**/rollout-*.jsonl (增量 byte_offset)
+│       │   ├── opencode_parser.py   # 解析 ~/.local/share/opencode/opencode.db (SQLite time_created 游標)
+│       │   └── omp_parser.py        # 解析 ~/.omp/agent/sessions/<slug>/*.jsonl (增量 byte_offset)
+│       ├── engine/
+│       │   ├── __init__.py
+│       │   ├── chunker.py           # 移植 RAGAdapter.add_incremental_message + _build_turn_context
+│       │   ├── store.py             # SQLite + NumPy memmap / pgvector 增量儲存與游標管理
+│       │   └── mlx_retriever.py     # MLX Qwen3-Embedding-4B + Qwen3-Reranker-4B + 時序重排 + Turn 展開
+│       ├── cli.py                   # `raw-rag-ingest` CLI (供各 Agent Hook 非阻塞呼叫)
+│       └── mcp_server.py            # `raw-rag-mcp` 標準 stdio MCP Server
+└── tests/
+    ├── test_sanitizer.py
+    ├── test_incremental_chunker.py
+    ├── test_parsers.py
+    └── test_end_to_end_retrieval.py
+```
+
+---
+
+## 2. 標準化資料模型與確定性降噪規格（`models.py` & `sanitizer.py`）
+
+### 2.1 統一對話文件格式（相容 `RAGAdapter._format_conversation`）
+每個 CLI Session 經解析後轉換為標準化 Header 與 Turn Lines：
+
+```text
+Conversation ID: {agent}_{session_id}
+Agent: {agent}
+Project: {project_path}
+Branch: {git_branch}
+
+[2026-10-25 21:10:05] User: {100% 原始使用者輸入}
+[2026-10-25 21:10:18] Assistant (Actions): [Read] src/rag_adapter.py | [Edit] src/chunker.py | [Bash] pytest -q (exit 0)
+[2026-10-25 21:10:25] Assistant: {100% 原始 Assistant 回覆與分析推理內容}
+```
+
+### 2.2 確定性降噪規則（`sanitizer.py`）
+1. **User / Assistant 正文**：100% 原文保留，不做任何截斷或改寫。
+2. **Thinking / Reasoning 區塊**：
+   - 若長度 $\le 512$ tokens 原文保留；若超過則保留前 128 tokens 與最後 256 tokens（因為結論通常在尾部）。
+3. **Tool Use / Tool Result**：
+   - `Read` / `View` / `Glob` / `Grep`：只記錄 `[ToolName] file_path_or_pattern`，**完全捨棄**回傳的檔案內容全文。
+   - `Edit` / `Write` / `Patch`：只記錄 `[Edit] file_path (+added/-removed lines)`，不塞入數百行 diff 全文。
+   - `Bash` / `RunCommand`：
+     - 若 `exit_code == 0`：記錄 `[Bash] command_str (exit 0)`。
+     - 若 `exit_code != 0`：記錄 `[Bash] command_str (exit {code})` 加上最後 15 行 `stderr`/`stdout`（保留關鍵錯誤堆疊供日後除錯檢索）。
+
+---
+
+## 3. 四大 CLI 工具解析器規格（`src/agent_raw_rag/parsers/`）
+
+| 解析器 | 本機資料路徑 | 增量游標（Cursor Key） | 欄位提取重點 |
+| :--- | :--- | :--- | :--- |
+| **`claude_parser.py`** | `~/.claude/projects/<slug>/*.jsonl` | `(file_path, byte_offset)` | 讀取 `type in ("user", "assistant")`；從 `cwd` 提取 `project_path`，`gitBranch` 提取分支；合併連續 tool_use 為單行 Action 摘要。 |
+| **`codex_parser.py`** | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | `(file_path, byte_offset)` | 讀取 JSONL 事件中的 `message`、`function_call`、`function_call_output` 與 `timestamp`。 |
+| **`opencode_parser.py`** | `~/.local/share/opencode/opencode.db` | `(session_id, last_part_time_created)` | 以唯讀模式連線 `file:...?mode=ro`；查詢 `session`、`message`、`part` 表；僅提取文字與工具名稱摘要，**跳過 `part` 表中數 MB 的 raw tool output**。 |
+| **`omp_parser.py`** | `~/.omp/agent/sessions/<slug>/*.jsonl` | `(file_path, byte_offset)` | 解析 Oh My Pi 的 session JSONL 事件（`user`、`assistant`、`toolResult`）與專案路徑。 |
+
+---
+
+## 4. 增量尾部切塊與儲存規格（`chunker.py` & `store.py`）
+
+直接移植 `/Volumes/Samsung970EVOPlus/dev-projects/raw-rag/repo/methods/EverCore/evaluation/src/adapters/rag_adapter.py` 的核心機制：
+
+1. **增量切塊（`add_incremental_turns`）**：
+   - 每個 `session_id` 在資料庫保存：
+     - `turn_lines: List[str]`
+     - `turn_spans: List[Tuple[int, int]]`（每個 Turn 在 `cl100k_base` token 流中的 `[start_tok, end_tok]`）
+     - `turn_timestamps: List[str]`
+     - `turn_dates: List[str]`（`YYYY-MM-DD`）
+   - 當新 Turn 追加時：
+     - 鎖定 `old_chunks[:-1]`（所有已填滿 `chunk_size = 256` tokens 的歷史區塊為 `stable_chunks`，**不重新計算 Embedding**）。
+     - 從最後一個未滿區塊的 `start_token` 開始，以 `chunk_size = 256`、`chunk_overlap = 32`（步長 224）切出新的 `tail_chunks`。
+     - 呼叫 `_annotate_token_chunks_with_turns` 標記每個區塊的 `start_turn` 與 `end_turn`。
+     - 僅對 `tail_chunks` 計算 Embedding 並寫入儲存層。
+
+2. **儲存層（`store.py`）**：
+   - 預設儲存路徑：`/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/data/raw_rag.db`（SQLite WAL 模式 + 浮點向量 Blob / NumPy memmap，並預留切換 `pgvector` 之介面）。
+   - 資料表結構：
+     - `ingestion_cursors(source_key TEXT PRIMARY KEY, agent TEXT, byte_offset INTEGER, last_timestamp INTEGER, updated_at TEXT)`
+     - `sessions(session_id TEXT PRIMARY KEY, agent TEXT, project_path TEXT, git_branch TEXT, header TEXT, turn_context_json TEXT, total_tokens INTEGER, updated_at TEXT)`
+     - `chunks(chunk_id TEXT PRIMARY KEY, session_id TEXT, chunk_index INTEGER, project_path TEXT, agent TEXT, content TEXT, start_token INTEGER, end_token INTEGER, start_turn INTEGER, end_turn INTEGER, start_date TEXT, end_date TEXT, embedding BLOB)`
+
+---
+
+## 5. 本機 MLX 兩階段檢索與呈現期展開（`mlx_retriever.py`）
+
+1. **模型配置（`HF_HOME=/Volumes/Samsung980/hf-home/`）**：
+   - Embedding：`Qwen/Qwen3-Embedding-4B`（MLX 後端，2560 維，支援指令前綴 `Instruct: Given a search query, retrieve relevant conversation passages that answer the query\nQuery: `）。
+   - Reranker：`Qwen/Qwen3-Reranker-4B`（MLX 後端，計算 `yes` / `no` logit 分數）。
+2. **檢索五步驟**：
+   - **Step 1（範圍與時序過濾）**：依 `project_path`（可選跨專案）、`agent`（可選）、`after_date` / `before_date` 篩出可見區塊。
+   - **Step 2（Dense 粗排 Top-128）**：以矩陣內積（Cosine Similarity）快速選出前 `candidate_top_k = 128` 個區塊。
+   - **Step 3（Cross-Encoder 精排 Top-15）**：以 `Qwen3-Reranker-4B` 對 128 個候選評分，取前 `rerank_top_k = 15`（若啟用 `dynamic_top_k`，保留 `rerank_score >= 0.5` 之區塊，不足時保底取前 3）。
+   - **Step 4（時序升冪重排）**：依 `(session_start_timestamp, start_turn, start_token, chunk_index)` **由舊到新排序**，讓 CLI Agent 直接看清狀態與決策的演進順序。
+   - **Step 5（呈現期動態回合展開，`_expand_chunk_to_turns`）**：查詢該 `session_id` 的 `turn_context.turn_spans`，將命中的 256-token 切片展開為完整的 `User` / `Assistant` 回合，並用 `seen_turns: set[(session_id, turn_idx)]` 自動去除相鄰區塊的重疊回合。
+
+---
+
+## 6. MCP 工具規格（`mcp_server.py`）
+
+提供以下 4 個 MCP Tools 給 Claude Code、Codex、OpenCode、Oh My Pi 呼叫：
+
+1. **`raw_rag_search`**
+   - **參數**：
+     - `query: str`（必填，自然語言問題或關鍵字）
+     - `project_path: Optional[str] = None`（預設優先搜尋當前專案，設為 `"*"` 則跨所有專案搜尋）
+     - `agent: Optional[str] = None`（可限定 `"claude" | "codex" | "opencode" | "omp"`）
+     - `after_date: Optional[str] = None`（`YYYY-MM-DD`）
+     - `before_date: Optional[str] = None`（`YYYY-MM-DD`）
+     - `top_k: int = 15`
+   - **回傳**：格式化之 `Memory 1 ... Memory k`（含來源 Agent、日期、專案、相似度與精排分數，以及展開後的完整對話回合）。
+2. **`raw_rag_recent`**
+   - **參數**：`project_path: Optional[str] = None`, `limit_turns: int = 30`
+   - **用途**：剛開啟新 Session 或剛執行完 `/compact` 時，快速取回該專案跨工具最近 `N` 輪完整對話與動作摘要。
+3. **`raw_rag_ingest`**
+   - **參數**：`agent: Optional[str] = None`（預設同步全部四套工具之增量更新）
+   - **回傳**：本次新增的 Session 數、新增 Turn 數、尾部重算之 Chunk 數與耗時（毫秒）。
+4. **`raw_rag_status`**
+   - **回傳**：目前索引中的總 Session 數、總 Chunk 數、各 Agent（Claude / Codex / OpenCode / OMP）佔比與最後同步時間。
