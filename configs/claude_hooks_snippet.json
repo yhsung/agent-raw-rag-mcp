@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "raw-rag": {
+      "command": "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-mcp",
+      "args": [],
+      "env": {
+        "HF_HOME": "/Volumes/Samsung980/hf-home/"
+      }
+    }
+  },
+  "hooks": {
+    "SessionEnd": [
+      {
+        "command": "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-ingest --agent claude",
+        "async": true
+      }
+    ]
+  }
+}

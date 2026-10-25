@@ -1,0 +1,8 @@
+# Codex CLI (~/.codex/config.toml) Configuration Snippet
+
+[mcp_servers.raw_rag]
+command = "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-mcp"
+args = []
+
+[mcp_servers.raw_rag.env]
+HF_HOME = "/Volumes/Samsung980/hf-home/"
