@@ -150,7 +150,6 @@ uv run pytest -v
 - **AI Agent 作業規範與架構邊界**：[`AGENTS.md`](./AGENTS.md)
 - **詳細技術規劃與資料模型**：[`PLAN.md`](./PLAN.md)
 - **論文復現與消融實驗報告**：[`reports/001-raw-rag-reproduction-report.md`](./reports/001-raw-rag-reproduction-report.md)
-- **論文復現與消融實驗報告**：[`reports/001-raw-rag-reproduction-report.md`](./reports/001-raw-rag-reproduction-report.md)
 
 ---
 
@@ -173,3 +172,9 @@ uv run pytest -v
   url           = {https://arxiv.org/abs/2610.30755}
 }
 ```
+
+---
+
+## 8. 授權條款（License）
+
+本專案採用 [MIT License](LICENSE) 開源授權條款。
