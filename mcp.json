@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "raw-rag": {
+      "type": "stdio",
+      "command": "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-mcp",
+      "args": [],
+      "env": {
+        "HF_HOME": "/Volumes/Samsung980/hf-home/"
+      }
+    }
+  }
+}
