@@ -29,7 +29,7 @@
 - **CLI Agents 整合架構藍圖（HTML）**：[`reports/raw-rag-cli-agents-blueprint.html`](./reports/raw-rag-cli-agents-blueprint.html)
 - **Raw-RAG 資料結構與檢索負載圖解（HTML）**：[`reports/raw-rag-data-payload-explained.html`](./reports/raw-rag-data-payload-explained.html)
 - **Raw-RAG 膨脹管理與架構圖解（HTML）**：[`reports/raw-rag-scaling-architecture.html`](./reports/raw-rag-scaling-architecture.html)
-- **論文完整復現與反向消融技術報告（Markdown）**：[`reports/raw-rag-reproduction-report.md`](./reports/raw-rag-reproduction-report.md)
+- **論文完整復現與反向消融技術報告（Markdown）**：[`reports/001-raw-rag-reproduction-report.md`](./reports/001-raw-rag-reproduction-report.md)
 - **實作計畫與介面規格（Markdown）**：[`PLAN.md`](./PLAN.md)
 
 ### 2.2 官方 `Raw-RAG` 參考實作（位於 `/Volumes/Samsung970EVOPlus/dev-projects/raw-rag`）
@@ -127,4 +127,11 @@
      - **架構規範與指引（Docs）**：`AGENTS.md`、`README.md`。
      - **執行計畫與介面規格（Plans）**：`PLAN.md` 及 `plans/` 資料夾下的專案藍圖。
    - 三者記載之資料表名稱（如 `ingestion_cursors`）、模型識別碼（如 `mlx-community/Qwen3-Reranker-4B-4bit`）及開關預設狀態（如 `dynamic_top_k.enabled: true`）必須保持 100% 事實一致。
+3. **報告與計畫檔案命名規範（Plans & Reports Sequential Naming Rule）**：
+   - 存放在 `plans/` 與 `reports/` 資料夾下的所有 Markdown 文件，未來一律嚴格遵循 **`<3 digit id>-<slug>.md`** 格式命名（例如 `plans/003-review-reconciliation-and-optimization-plan.md`、`reports/005-raw-rag-truth-alignment-and-reranker-4b-evaluation-report.md`）。
+   - **ID 時序嚴格遞增**：三位數 ID 代表建立時序，**時間越晚的編號越大，依序嚴格遞增（001, 002, 003, ...）**。
+   - 建立新計畫或新技術報告前，必須先掃描該目錄現有最大三位數編號，取其下一位號碼（例如現有最大為 003，則新檔為 004-xxx.md），杜絕命名衝突、無序排列與時序倒置。
+4. **計畫可追溯性與報告鏈結規範（Plan-to-Report Traceability Rule）**：
+   - 未來在 `plans/` 資料夾新增的 Markdown 執行計畫，若其設計、架構重構或技術選型源自 `reports/` 裡面的某份技術報告或分析評估，**必須在該計畫檔案頂部的 Metadata 區塊明確加入指向該報告的可點擊 Markdown 鏈結（例如 `> **依據報告**：[<3 digit id>-<slug>.md](../reports/<3 digit id>-<slug>.md)`）**。
+   - 確保每一項架構決策與重大重構的起因、實測數據與理論依據具備 100% 雙向可追溯性（Bidirectional Traceability），嚴禁無來源依據的斷頭計畫。
 

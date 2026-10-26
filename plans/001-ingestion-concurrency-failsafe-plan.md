@@ -1,7 +1,7 @@
 # Raw-RAG 背景常駐增量更新、多 Agent 併發處理與 Failsafe 架構下一輪修改規劃
 
 > **專案**：`agent-raw-rag-mcp`  
-> **基於報告**：[`reports/raw-rag-ingestion-concurrency-and-failsafe-architecture.md`](file:///Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/reports/raw-rag-ingestion-concurrency-and-failsafe-architecture.md)  
+> **基於報告**：[`reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md`](file:///Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md)  
 > **目標讀者與執行者**：AI Coding Agent、系統架構師  
 > **實作環境**：Apple Silicon (64GB Unified Memory), macOS, Python 3.12, MLX, SQLite WAL  
 > **日期**：2026-10-26  
@@ -10,7 +10,7 @@
 
 ## 1. 執行背景與問題定義（Problem Statement & Motivation）
 
-根據架構報告 [`reports/raw-rag-ingestion-concurrency-and-failsafe-architecture.md`](file:///Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/reports/raw-rag-ingestion-concurrency-and-failsafe-architecture.md) 的實證分析，本專案在落實「長對話記憶跨 Agent 共享」與「消除 `/compact` 21.9% 永久表徵損失」的過程中，目前系統存在以下四個急需改善的架構瓶頸：
+根據架構報告 [`reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md`](file:///Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md) 的實證分析，本專案在落實「長對話記憶跨 Agent 共享」與「消除 `/compact` 21.9% 永久表徵損失」的過程中，目前系統存在以下四個急需改善的架構瓶頸：
 
 1. **多會話/跨 Agent 串列推論低效（Lack of Cross-Agent Batching）**：
    - 現行 [`cli.py`](file:///Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/src/agent_raw_rag/cli.py) 的 `_process_turns_for_session` 是在每個 Session 掃描到增量後，立即呼叫一次 `retriever.embed_texts([c.content for c in tail_chunks])`。
@@ -242,7 +242,7 @@ agent-raw-rag-mcp/
 ├── configs/
 │   └── default_config.yaml             # [MOD] 新增 sources.antigravity 配置項
 ├── plans/
-│   └── ingestion-concurrency-failsafe-plan.md # [NEW] 本技術規劃書
+│   └── 001-ingestion-concurrency-failsafe-plan.md # [NEW] 本技術規劃書
 ├── tests/
 │   ├── test_antigravity_parser.py      # [NEW] Antigravity 解析器單元測試
 │   ├── test_cross_agent_batching.py    # [NEW] 跨會話批次向量推論與事務測試

@@ -1,6 +1,7 @@
 # Raw-RAG 系統落差收斂與架構優化規劃書
 
-> **文件名稱**：`plans/review-reconciliation-and-optimization-plan.md`  
+> **文件名稱**：`plans/003-review-reconciliation-and-optimization-plan.md`  
+> **落地驗證報告**：[`reports/005-raw-rag-truth-alignment-and-reranker-4b-evaluation-report.md`](../reports/005-raw-rag-truth-alignment-and-reranker-4b-evaluation-report.md)  
 > **規劃目標**：針對獨立審查提出的 7 項文件與原始碼落差、模型降級、暴力搜尋瓶頸、N+1 查詢及缺少 LaunchAgent 常駐設定，制定系統性修復與效能重構藍圖。  
 > **日期**：2026-10-26  
 > **環境規範**：Apple Silicon (macOS), Python 3.12, SQLite WAL, MLX Framework, 64GB 統一記憶體  

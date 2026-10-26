@@ -1,6 +1,6 @@
 # Raw-RAG 文件配置真實性對齊與 Qwen3-Reranker 4B 效益實測報告
 
-> **報告名稱**：`reports/raw-rag-truth-alignment-and-reranker-4b-evaluation-report.md`  
+> **報告名稱**：`reports/005-raw-rag-truth-alignment-and-reranker-4b-evaluation-report.md`  
 > **評估專案**：`agent-raw-rag-mcp`  
 > **測試環境**：Apple Silicon (macOS), 64GB Unified Memory, Python 3.12, MLX 框架  
 > **權重路徑**：`HF_HOME=/Volumes/Samsung980/hf-home/`  
@@ -182,7 +182,7 @@ xychart-beta
 
 ## 6. 結論與後續執行規劃（Next Steps）
 
-本次對齊與量測工作已全數完成，27 項單元與整合測試全數通過，並落實了文件同步規範。後續將依據 [`plans/review-reconciliation-and-optimization-plan.md`](file:///Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/plans/review-reconciliation-and-optimization-plan.md) 啟動第二階段任務：
+本次對齊與量測工作已全數完成，27 項單元與整合測試全數通過，並落實了文件同步規範。後續將依據 [`plans/003-review-reconciliation-and-optimization-plan.md`](file:///Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/plans/003-review-reconciliation-and-optimization-plan.md) 啟動第二階段任務：
 
 - [ ] **粗排兩階段 SQL 延遲載入（Projection Separation & Deferred Fetch）**：將 `load_candidates_with_embeddings` 改為先只投影向量與 ID，計算 Top-128 後再批次載入內文，消除 10 萬切片規模下的全表記憶體載入瓶頸。
 - [ ] **展開階段 N+1 查詢消除**：實作 `get_turn_contexts_batch`，將展示期資料庫查詢次數從 $N$ 次縮減為 1 次。

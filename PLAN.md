@@ -19,11 +19,19 @@
 │   ├── codex_config_snippet.toml    # Codex ~/.codex/config.toml 接線設定
 │   ├── opencode_snippet.json        # OpenCode ~/.config/opencode/opencode.json 接線設定
 │   └── omp_extension_raw_rag.ts     # Oh My Pi ~/.omp/agent/extensions/raw-rag.ts 擴充腳本
-├── reports/
+├── plans/                           # 嚴格遵循 <3 digit id>-<slug>.md 時序遞增命名
+│   ├── 001-ingestion-concurrency-failsafe-plan.md
+│   ├── 002-status-cursor-observability-plan.md
+│   └── 003-review-reconciliation-and-optimization-plan.md
+├── reports/                         # 嚴格遵循 <3 digit id>-<slug>.md 時序遞增命名
+│   ├── 001-raw-rag-reproduction-report.md     # 論文完整復現與反向消融報告 (Markdown)
+│   ├── 002-comparison-agent-raw-rag-vs-agy-memory-engine.md
+│   ├── 003-llm-abstraction-and-karpathy-wiki-in-organizations.md
+│   ├── 004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md
+│   ├── 005-raw-rag-truth-alignment-and-reranker-4b-evaluation-report.md
 │   ├── raw-rag-cli-agents-blueprint.html      # 五大 CLI Agent 整合架構藍圖 (HTML)
 │   ├── raw-rag-data-payload-explained.html    # Raw-RAG 資料結構與檢索負載圖解 (HTML)
-│   ├── raw-rag-scaling-architecture.html      # Raw-RAG 膨脹管理與架構圖解 (HTML)
-│   └── raw-rag-reproduction-report.md         # 論文完整復現與反向消融報告 (Markdown)
+│   └── raw-rag-scaling-architecture.html      # Raw-RAG 膨脹管理與架構圖解 (HTML)
 ├── src/
 │   └── agent_raw_rag/
 │       ├── __init__.py

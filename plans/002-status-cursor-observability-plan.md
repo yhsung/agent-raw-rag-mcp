@@ -1,6 +1,7 @@
 # Raw-RAG CLI `--status` 多 Agent 游標進度與時序可觀測性規劃
 
 > **專案**：`agent-raw-rag-mcp`  
+> **關聯架構報告**：[`reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md`](../reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md)  
 > **規劃目標**：升級 `--status` 輸出，提供每個 Agent 攝取游標（Ingestion Cursor）的即時進度、對話時序新鮮度（Latest Dialogue Time）與最新活躍工作區上下文。  
 > **日期**：2026-10-26  
 > **環境**：Apple Silicon, macOS, SQLite WAL, Python 3.12  
@@ -137,7 +138,7 @@ agent-raw-rag-mcp/
 ├── tests/
 │   └── test_status_cli.py # [NEW] 驗證各 Agent 時序提取正確性與表格輸出
 └── plans/
-    └── status-cursor-observability-plan.md # [NEW] 本規劃文件
+    └── 002-status-cursor-observability-plan.md # [NEW] 本規劃文件
 ```
 
 ### 實作步驟

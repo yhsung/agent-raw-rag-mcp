@@ -148,7 +148,7 @@ pytest -v
 - **本機安裝與五大 Agent 設定實戰**：[`EXAMPLE.md`](./EXAMPLE.md)
 - **AI Agent 作業規範與架構邊界**：[`AGENTS.md`](./AGENTS.md)
 - **詳細技術規劃與資料模型**：[`PLAN.md`](./PLAN.md)
-- **論文復現與消融實驗報告**：[`reports/raw-rag-reproduction-report.md`](./reports/raw-rag-reproduction-report.md)
+- **論文復現與消融實驗報告**：[`reports/001-raw-rag-reproduction-report.md`](./reports/001-raw-rag-reproduction-report.md)
 
 ---
 
