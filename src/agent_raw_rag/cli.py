@@ -627,16 +627,29 @@ DEFAULT_LOG_DIR = Path.home() / ".local" / "state" / "agent-raw-rag" / "logs"
 
 def install_launch_agent(interval: int = 15, config_path: Optional[str] = None) -> int:
     """Render template and register macOS LaunchAgent background service."""
+    python_exec = sys.executable
+    if ".cache/uv" in python_exec or "uv/cache" in python_exec:
+        print("⚠️ 警告：偵測到正在 uvx 暫存環境中執行。uv cache prune 可能導致背景服務失效，常駐背景守護進程建議先執行 'uv tool install .'，或指定持久 Python 直譯器安裝。")
+
     pkg_dir = Path(__file__).resolve().parent.parent.parent
     template_path = pkg_dir / "configs" / f"{LAUNCH_AGENT_LABEL}.plist.template"
-    if not template_path.exists():
-        print(f"Error: LaunchAgent template not found at {template_path}")
+    template_content = ""
+    if template_path.exists():
+        template_content = template_path.read_text(encoding="utf-8")
+    else:
+        try:
+            import importlib.resources as pkg_resources
+            ref = pkg_resources.files("agent_raw_rag").joinpath(f"resources/{LAUNCH_AGENT_LABEL}.plist.template")
+            if ref.is_file():
+                template_content = ref.read_text(encoding="utf-8")
+        except Exception:
+            pass
+
+    if not template_content:
+        print(f"Error: LaunchAgent template not found at {template_path} or within package resources.")
         return 1
 
-    template_content = template_path.read_text(encoding="utf-8")
-
-    python_exec = sys.executable
-    working_dir = str(pkg_dir)
+    working_dir = str(pkg_dir) if (pkg_dir / "pyproject.toml").exists() else str(Path.home())
     log_dir = DEFAULT_LOG_DIR
     log_dir.mkdir(parents=True, exist_ok=True)
     env_path = os.environ.get("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")

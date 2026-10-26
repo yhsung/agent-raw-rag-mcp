@@ -177,6 +177,21 @@ def raw_rag_status(agent: Optional[str] = None) -> str:
 
 def main() -> None:
     """Entry point for stdio MCP server."""
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print("agent-raw-rag-mcp: Raw-RAG cross-agent memory retrieval MCP server (stdio transport)")
+        print("\nUsage:")
+        print("  agent-raw-rag-mcp          Run the stdio MCP server")
+        print("  agent-raw-rag-mcp --help   Show this help message")
+        print("  agent-raw-rag-mcp --version Show version")
+        return
+    if "--version" in sys.argv or "-v" in sys.argv:
+        try:
+            from importlib.metadata import version
+            v = version("agent-raw-rag-mcp")
+        except Exception:
+            v = "0.1.0"
+        print(f"agent-raw-rag-mcp {v}")
+        return
     # Run the standard stdio server
     mcp.run()
 

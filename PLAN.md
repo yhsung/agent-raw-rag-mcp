@@ -23,9 +23,7 @@
 > **定義**：已有前導分析報告（或由重大架構議題觸發），已撰寫對應子計畫 `plans/<3-digit-id>-<slug>.md` 且內部包含指向報告的鏈結，但目前**尚未完工驗證（進行中、部分完成或受阻）**。
 > **目的**：在 SSOT 即時揭露專案活動脈搏、當前 Phase、阻斷點（Blockers）與預計驗證標準。
 
-| 計畫 ID 與檔案 | 關聯/依據報告 | 當前進度 | 進行中階段與阻斷點 | 預期驗證指標 |
-| :--- | :--- | :--- | :--- | :--- |
-| *(目前暫無未完成子計畫)* | - | 100% 全綠 | 所有現有子計畫已全數收斂驗證完成（見狀態 3） | - |
+*（目前無進行中子計畫，所有已立項之計畫皆已全數完工驗證）*
 
 ---
 
@@ -39,6 +37,7 @@
 | [`plans/001-ingestion-concurrency-failsafe-plan.md`](./plans/001-ingestion-concurrency-failsafe-plan.md) | [`reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md`](./reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md) | [`reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md`](./reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md) | 實作多 Agent 聚合批次推論（`max_batch_size=64`）、Antigravity Parser、交易原子性與壞檔隔離。 | 整合入全域迴歸測試 |
 | [`plans/002-status-cursor-observability-plan.md`](./plans/002-status-cursor-observability-plan.md) | [`reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md`](./reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md) | [`reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md`](./reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md) | 實作 `raw-rag-ingest --status` 多 Agent 游標新鮮度、即時 Lag 與專案目錄脈絡輸出。 | `tests/test_status_cli.py` 通過 |
 | [`plans/003-review-reconciliation-and-optimization-plan.md`](./plans/003-review-reconciliation-and-optimization-plan.md) | 獨立審查 7 大缺口評估 | [`reports/005-raw-rag-truth-alignment-and-reranker-4b-evaluation-report.md`](./reports/005-raw-rag-truth-alignment-and-reranker-4b-evaluation-report.md) | 1. 修正 Schema 文件（3 表）與 `dynamic_top_k: true`<br>2. 解耦 Reranker 支援 4B/0.6B<br>3. 實作兩階段延遲 SQL 載入與單次批次展開（根除暴力載入與 N+1）<br>4. 曝光 `engine_status` 與新增真實權重測試<br>5. 實作 LaunchAgent 服務管理 CLI<br>(Commits: `d5e0ea3`, `02656a6`, `2d87631`, `8b37a22`) | `tests/test_retrieval_real_weights.py`<br>`tests/test_daemon_cli.py`<br>全套 31 項測試全數通過 |
+| [`plans/004-uvx-execution-and-pypi-distribution-plan.md`](./plans/004-uvx-execution-and-pypi-distribution-plan.md) | [`reports/006-uvx-execution-gap-analysis.md`](./reports/006-uvx-execution-gap-analysis.md) | [`docs/PUBLISHING.md`](./docs/PUBLISHING.md)<br>測試套件 `tests/test_package_build.py` | 1. Entrypoint 命名對齊 (`agent-raw-rag-mcp`)<br>2. 內嵌設定檔資源化 (`src/agent_raw_rag/resources/`) 與全域 DB fallback<br>3. 各 Agent 範本更新為 `uvx` 與 LaunchAgent 暫存快取防護<br>4. Wheel/Sdist 打包安全自動化稽核（100% 排除 `data/` 與敏感資訊）<br>5. GitHub Actions `publish.yml` 與 PyPI 發布手冊 `docs/PUBLISHING.md` | `tests/test_uvx_integration.py`<br>`tests/test_package_build.py`<br>全套 36 項測試全數通過 |
 
 ---
 
@@ -57,16 +56,20 @@
 │   ├── codex_config_snippet.toml    # Codex ~/.codex/config.toml 接線設定
 │   ├── opencode_snippet.json        # OpenCode ~/.config/opencode/opencode.json 接線設定
 │   └── omp_extension_raw_rag.ts     # Oh My Pi ~/.omp/agent/extensions/raw-rag.ts 擴充腳本
+├── docs/
+│   └── PUBLISHING.md                # PyPI 打包稽核、TestPyPI 演練與發布 SOP
 ├── plans/                           # 嚴格遵循 <3 digit id>-<slug>.md 時序遞增命名
 │   ├── 001-ingestion-concurrency-failsafe-plan.md
 │   ├── 002-status-cursor-observability-plan.md
-│   └── 003-review-reconciliation-and-optimization-plan.md
+│   ├── 003-review-reconciliation-and-optimization-plan.md
+│   └── 004-uvx-execution-and-pypi-distribution-plan.md
 ├── reports/                         # 嚴格遵循 <3 digit id>-<slug>.md 時序遞增命名
 │   ├── 001-raw-rag-reproduction-report.md     # 論文完整復現與反向消融報告 (Markdown)
 │   ├── 002-comparison-agent-raw-rag-vs-agy-memory-engine.md
 │   ├── 003-llm-abstraction-and-karpathy-wiki-in-organizations.md
 │   ├── 004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md
 │   ├── 005-raw-rag-truth-alignment-and-reranker-4b-evaluation-report.md
+│   ├── 006-uvx-execution-gap-analysis.md             # uvx 隨選執行之 Gap 評估與實作路線報告
 │   ├── raw-rag-cli-agents-blueprint.html      # 五大 CLI Agent 整合架構藍圖 (HTML)
 │   ├── raw-rag-data-payload-explained.html    # Raw-RAG 資料結構與檢索負載圖解 (HTML)
 │   └── raw-rag-scaling-architecture.html      # Raw-RAG 膨脹管理與架構圖解 (HTML)
@@ -75,6 +78,10 @@
 │       ├── __init__.py
 │       ├── config.py                # 讀取設定與環境變數 (強制 HF_HOME=/Volumes/Samsung980/hf-home/，支援 4B 與 0.6B)
 │       ├── models.py                # NormalizedTurn, SessionMetadata, ChunkRecord, TurnContext 資料模型
+│       ├── resources/               # 打包內嵌資源 (Wheel 隨套件發布)
+│       │   ├── __init__.py
+│       │   ├── default_config.yaml
+│       │   └── com.user.agent-raw-rag.plist.template
 │       ├── parsers/
 │       │   ├── __init__.py
 │       │   ├── sanitizer.py         # Deterministic Sanitizer (濾除巨型 Tool stdout，保留對白與動作摘要)

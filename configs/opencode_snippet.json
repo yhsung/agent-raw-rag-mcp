@@ -4,7 +4,10 @@
     "raw-rag": {
       "type": "local",
       "command": [
-        "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-mcp"
+        "uvx",
+        "--from",
+        "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp",
+        "agent-raw-rag-mcp"
       ],
       "environment": {
         "HF_HOME": "/Volumes/Samsung980/hf-home/"

@@ -1,9 +1,36 @@
 [project]
 name = "agent-raw-rag-mcp"
 version = "0.1.0"
-description = "Cross-agent Raw-RAG incremental memory indexer and MLX two-stage retrieval MCP server for Claude Code, Codex, OpenCode, and Oh My Pi"
+description = "Cross-agent Raw-RAG incremental memory indexer and MLX two-stage retrieval MCP server for Claude Code, Codex, OpenCode, Oh My Pi, and Antigravity"
 readme = "README.md"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "agent-raw-rag-mcp contributors" },
+]
+keywords = [
+    "mcp",
+    "raw-rag",
+    "agent-memory",
+    "mlx",
+    "apple-silicon",
+    "claude-code",
+    "codex",
+    "opencode",
+    "oh-my-pi",
+    "antigravity",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "mcp>=1.2.0",
     "mlx>=0.22.0",
@@ -13,7 +40,19 @@ dependencies = [
     "tiktoken>=0.7.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yhsung/agent-raw-rag-mcp"
+Documentation = "https://github.com/yhsung/agent-raw-rag-mcp/blob/main/README.md"
+Repository = "https://github.com/yhsung/agent-raw-rag-mcp.git"
+Issues = "https://github.com/yhsung/agent-raw-rag-mcp/issues"
+
 [project.scripts]
+agent-raw-rag-mcp = "agent_raw_rag.mcp_server:main"
 raw-rag-mcp = "agent_raw_rag.mcp_server:main"
 raw-rag-ingest = "agent_raw_rag.cli:main"
 
@@ -23,3 +62,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent_raw_rag"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/data",
+    "*.db",
+    "*.wal",
+    "*.shm",
+    "transcript.jsonl",
+    ".cache",
+    ".pytest_cache",
+]

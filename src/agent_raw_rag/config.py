@@ -91,10 +91,20 @@ class SourcesConfig:
     )
 
 
+def default_sqlite_path() -> str:
+    """Return default SQLite database path with fallback to ~/.agent-raw-rag/raw_rag.db."""
+    if "RAW_RAG_DB_PATH" in os.environ:
+        return os.environ["RAW_RAG_DB_PATH"]
+    local_dev_path = Path("/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/data/raw_rag.db")
+    if local_dev_path.parent.exists():
+        return str(local_dev_path)
+    return str(Path.home() / ".agent-raw-rag" / "raw_rag.db")
+
+
 @dataclass
 class StorageConfig:
     backend: str = "sqlite"
-    sqlite_path: str = "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/data/raw_rag.db"
+    sqlite_path: str = field(default_factory=default_sqlite_path)
 
 
 @dataclass
@@ -128,23 +138,34 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
     default_locations = [
         config_path,
         os.getenv("RAW_RAG_CONFIG"),
+        str(Path.cwd() / "configs" / "default_config.yaml"),
         str(
             Path(
                 "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/configs/default_config.yaml"
             )
         ),
-        str(Path.cwd() / "configs" / "default_config.yaml"),
     ]
 
     cfg_dict: Dict[str, Any] = {}
+    found_config = False
     for loc in default_locations:
         if loc and Path(loc).is_file():
             try:
                 with open(loc, "r", encoding="utf-8") as f:
                     cfg_dict = yaml.safe_load(f) or {}
+                found_config = True
                 break
             except Exception:
                 continue
+
+    if not found_config:
+        try:
+            import importlib.resources as pkg_resources
+            ref = pkg_resources.files("agent_raw_rag").joinpath("resources/default_config.yaml")
+            if ref.is_file():
+                cfg_dict = yaml.safe_load(ref.read_text(encoding="utf-8")) or {}
+        except Exception:
+            pass
 
     env_cfg = EnvironmentConfig(
         hf_home=cfg_dict.get("environment", {}).get("hf_home", DEFAULT_HF_HOME),
@@ -230,12 +251,18 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
     )
 
     sto_d = cfg_dict.get("storage", {})
+    raw_sqlite_path = sto_d.get("sqlite_path")
+    if not raw_sqlite_path:
+        raw_sqlite_path = default_sqlite_path()
+    elif (
+        raw_sqlite_path == "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/data/raw_rag.db"
+        and not Path("/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/data").exists()
+    ):
+        raw_sqlite_path = default_sqlite_path()
+
     sto_cfg = StorageConfig(
         backend=sto_d.get("backend", "sqlite"),
-        sqlite_path=sto_d.get(
-            "sqlite_path",
-            "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/data/raw_rag.db",
-        ),
+        sqlite_path=raw_sqlite_path,
     )
 
     config = AppConfig(

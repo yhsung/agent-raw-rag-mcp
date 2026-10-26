@@ -9,18 +9,26 @@
 
 import { spawn } from "node:child_process";
 
-const PYTHON_BIN = "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/python3";
-const MCP_BIN = "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-mcp";
+const MCP_COMMAND = "uvx";
+const MCP_ARGS = [
+  "--from",
+  "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp",
+  "agent-raw-rag-mcp",
+];
 const HF_HOME = "/Volumes/Samsung980/hf-home/";
 
 function runPyScript(code: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(PYTHON_BIN, ["-c", code], {
-      env: {
-        ...process.env,
-        HF_HOME,
-      },
-    });
+    const child = spawn(
+      "uvx",
+      ["--from", "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp", "python3", "-c", code],
+      {
+        env: {
+          ...process.env,
+          HF_HOME,
+        },
+      }
+    );
 
     let stdout = "";
     let stderr = "";
@@ -47,8 +55,8 @@ export default function activate(pi: any) {
   if (typeof pi.registerMcpServer === "function") {
     try {
       pi.registerMcpServer("raw-rag", {
-        command: MCP_BIN,
-        args: [],
+        command: MCP_COMMAND,
+        args: MCP_ARGS,
         env: { HF_HOME },
       });
     } catch {

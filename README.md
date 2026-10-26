@@ -91,24 +91,24 @@ flowchart TD
 4. **`raw_rag_status`**
    - 功能：回傳目前的 Sessions 數、Chunks 總數與各 Agent 分佈。
 
-### 4.2 CLI 命令
+### 4.2 CLI 命令與 `uvx` 隨選執行
+
+本套件全面支援 Astral `uvx`（`uv tool run`），免手動啟用虛擬環境即可隨選執行：
 
 ```bash
-# 查看資料庫索引與推論引擎即時狀態 (ASCII 表格 / JSON)
-raw-rag-ingest --status
-raw-rag-ingest --status --json
+# === 1. 隨選查看資料庫索引與推論引擎即時狀態 ===
+# 本機開發模式：
+uvx --from /Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp raw-rag-ingest --status
+# PyPI 發布模式：
+uvx --from agent-raw-rag-mcp raw-rag-ingest --status
 
-# 執行一次全量/增量掃描同步
-raw-rag-ingest
+# === 2. 隨選增量掃描同步 ===
+uvx --from agent-raw-rag-mcp raw-rag-ingest --agent antigravity
 
-# 指定單一 Agent 進行同步
-raw-rag-ingest --agent omp
-raw-rag-ingest --agent antigravity
+# === 3. 隨選啟動 stdio MCP 伺服器 ===
+uvx agent-raw-rag-mcp
 
-# 前台輪詢背景模式 (每 15 秒自動增量同步)
-raw-rag-ingest --watch --interval 15
-
-# macOS LaunchAgent 系統常駐服務管理 (自動開機/登入啟動)
+# === 4. macOS LaunchAgent 系統常駐服務管理 ===
 raw-rag-ingest --install-daemon    # 安裝並註冊 LaunchAgent 常駐背景服務
 raw-rag-ingest --daemon-status     # 檢查 LaunchAgent 常駐服務運行狀態與日誌
 raw-rag-ingest --uninstall-daemon  # 停止並卸載 LaunchAgent 服務
@@ -138,16 +138,18 @@ uv pip install -e . pytest
 ### 5.3 執行測試
 
 ```bash
-# 執行全部單元與整合測試（15 項）
-pytest -v
+# 執行全部單元與整合測試
+uv run pytest -v
 ```
 
 ---
 
 ## 6. 深入文件
 - **本機安裝與五大 Agent 設定實戰**：[`EXAMPLE.md`](./EXAMPLE.md)
+- **PyPI 打包與發布標準作業程序**：[`docs/PUBLISHING.md`](./docs/PUBLISHING.md)
 - **AI Agent 作業規範與架構邊界**：[`AGENTS.md`](./AGENTS.md)
 - **詳細技術規劃與資料模型**：[`PLAN.md`](./PLAN.md)
+- **論文復現與消融實驗報告**：[`reports/001-raw-rag-reproduction-report.md`](./reports/001-raw-rag-reproduction-report.md)
 - **論文復現與消融實驗報告**：[`reports/001-raw-rag-reproduction-report.md`](./reports/001-raw-rag-reproduction-report.md)
 
 ---

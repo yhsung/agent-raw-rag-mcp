@@ -40,8 +40,12 @@ uv pip install -e . pytest
 {
   "mcpServers": {
     "raw-rag": {
-      "command": "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-mcp",
-      "args": [],
+      "command": "uvx",
+      "args": [
+        "--from",
+        "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp",
+        "agent-raw-rag-mcp"
+      ],
       "env": {
         "HF_HOME": "/Volumes/Samsung980/hf-home/"
       }
@@ -50,19 +54,7 @@ uv pip install -e . pytest
 }
 ```
 
-可選：在 `~/.claude/settings.json` 的 `hooks.SessionEnd` 加入非同步自動同步：
-```json
-{
-  "hooks": {
-    "SessionEnd": [
-      {
-        "command": "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-ingest --agent claude",
-        "async": true
-      }
-    ]
-  }
-}
-```
+> **提示**：若透過 PyPI 發行版本安裝，`args` 僅需填入 `["agent-raw-rag-mcp"]` 即可。
 
 ---
 
@@ -71,8 +63,8 @@ uv pip install -e . pytest
 
 ```toml
 [mcp_servers.raw_rag]
-command = "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-mcp"
-args = []
+command = "uvx"
+args = ["--from", "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp", "agent-raw-rag-mcp"]
 
 [mcp_servers.raw_rag.env]
 HF_HOME = "/Volumes/Samsung980/hf-home/"
@@ -89,7 +81,10 @@ HF_HOME = "/Volumes/Samsung980/hf-home/"
     "raw-rag": {
       "type": "local",
       "command": [
-        "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-mcp"
+        "uvx",
+        "--from",
+        "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp",
+        "agent-raw-rag-mcp"
       ],
       "enabled": true,
       "environment": {
@@ -104,7 +99,7 @@ HF_HOME = "/Volumes/Samsung980/hf-home/"
 
 ### 3.4 Oh My Pi (`omp` / `pi`)
 
-#### A. 全域 MCP 設定（重要 Finding）
+#### A. 全域 MCP 設定
 `omp` 原生讀取的標準全域 MCP 設定檔為 **`~/.omp/agent/mcp.json`**（或專案根目錄的 `mcp.json`），內容格式如下：
 
 ```json
@@ -112,8 +107,12 @@ HF_HOME = "/Volumes/Samsung980/hf-home/"
   "mcpServers": {
     "raw-rag": {
       "type": "stdio",
-      "command": "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-mcp",
-      "args": [],
+      "command": "uvx",
+      "args": [
+        "--from",
+        "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp",
+        "agent-raw-rag-mcp"
+      ],
       "env": {
         "HF_HOME": "/Volumes/Samsung980/hf-home/"
       }
@@ -138,8 +137,12 @@ ln -sf /Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/configs/omp_ext
 {
   "mcpServers": {
     "raw-rag": {
-      "command": "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-mcp",
-      "args": [],
+      "command": "uvx",
+      "args": [
+        "--from",
+        "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp",
+        "agent-raw-rag-mcp"
+      ],
       "env": {
         "HF_HOME": "/Volumes/Samsung980/hf-home/"
       }
