@@ -19,39 +19,44 @@
 
 本專案嚴格遵從論文 **`Raw-RAG`**（*Is Complex Agentic Memory Always Needed? Naive RAG Is Stronger Than We Thought*, arXiv:2610.30755）經消融實驗證實最重要的五項原則：
 
-```
-[原始對話日誌]
-      │
-      ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 1. 寫入端零 LLM (Zero-LLM) + 2. 確定性降噪器 (Sanitizer)     │
-│    - 100% 保留 User Prompt & Assistant 正文                 │
-│    - 工具呼叫壓縮為單行摘要 [Tool] target (code)             │
-│    - 捨棄巨大原始碼與 diff 全文；失敗命令保留末 15 行 tail   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 3. 256-token 增量尾部切塊 (Incremental Tail-Only Chunking)   │
-│    - cl100k_base (256/32 tokens, 步長 224)                  │
-│    - 歷史已滿 256t 切片鎖定為 stable_chunks (O(ΔL) 計算)     │
-│    - 僅重切最後未滿區塊與新 tail_chunks；計算向量存入 SQLite │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 4. 兩階段漏斗檢索 + 時序升冪重排 (Two-Stage & Chrono Reorder)│
-│    - 專案/時間預過濾 ──▶ Dense Cosine Top-128               │
-│    - MLX Qwen3-Reranker (2-column 投影頭) 精排 Top-15        │
-│    - 依 (session_timestamp, start_turn, start_token) 升冪   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 5. 呈現期動態回合展開 (Display-Time Dynamic Turn Expansion) │
-│    - 依據 turn_spans 座標動態展開為完整的問答回合           │
-│    - 自動去重 (Turn Deduplication)，不重疊呈現               │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    %% 寫入端管線
+    subgraph S1["1. 寫入管線 (Ingestion Pipeline)"]
+        RAW["四大 Agent 原始對白與操作日誌<br/>(Claude / Codex / OpenCode / OMP)"]
+        
+        INV1["【不變量 1】寫入端零 LLM 呼叫 (Zero-LLM Ingestion)<br/>嚴禁呼叫 LLM 進行摘要、原子事實萃取或三元組抽取"]
+        RAW --> INV1
+        
+        INV2["【不變量 2】確定性降噪器 (Deterministic Sanitizer)<br/>• 100% 保留 User/Assistant 對白原文<br/>• 工具呼叫壓縮為單行摘要 [Tool] target (exit_code)<br/>• 剝除 Read 原始碼與 giant diff，失敗僅留末 15 行 stderr"]
+        INV1 --> INV2
+        
+        INV3["【不變量 3】增量尾部切塊 (Incremental Tail-Only Chunking)<br/>• 256 tokens 窗口 / 32 tokens 重疊 (cl100k_base)<br/>• 鎖定 stable_chunks，僅重切/向量化尾部未滿區塊與增量 ΔL<br/>• 同步建立 turn_spans 高精度回合映射"]
+        INV2 --> INV3
+    end
+
+    %% 儲存層
+    subgraph S2["2. 儲存層 (Storage Engine)"]
+        DB[("SQLite + 二進位向量快取<br/>(sessions, turns, chunks, sync_cursors)")]
+        INV3 -->|增量寫入| DB
+    end
+
+    %% 檢索與展開管線
+    subgraph S3["3. 檢索與展開管線 (Retrieval & Display Pipeline)"]
+        QUERY["Agent 查詢請求 (Query)"]
+        
+        INV4["【不變量 4】兩階段漏斗檢索 + 時序升冪重排<br/>1. 專案 / 時間範圍預過濾<br/>2. Dense 粗排 Top-128 (Qwen3-Embedding-4B)<br/>3. Cross-Encoder 精排 Top-15 (Qwen3-Reranker-4B, 門檻 > 0.5)<br/>4. 依原始對話時序 (session, turn, token) 升冪重排"]
+        QUERY --> INV4
+        DB -.->|檢索索引| INV4
+        
+        INV5["【不變量 5】呈現期動態展開 (Display-Time Turn Expansion)<br/>• 命中切片透過 turn_spans 動態還原為完整 User/Assistant 對話回合<br/>• 自動去除跨區塊重複回合 (dedup_turns_on_display)<br/>• 0 本機 Reader LLM，直接回傳給宿主 CLI Agent 擔任 Reader"]
+        INV4 --> INV5
+    end
+
+    INV5 --> OUT["回傳無損對話脈絡給宿主 CLI Agent<br/>(消除 /compact 造成的 21.9% 表徵損失)"]
+
+    classDef inv fill:#e8f4fd,stroke:#1d70b8,stroke-width:2px,color:#0b0c0c;
+    class INV1,INV2,INV3,INV4,INV5 inv;
 ```
 
 ---
@@ -137,3 +142,25 @@ pytest -v
 - **AI Agent 作業規範與架構邊界**：[`AGENTS.md`](./AGENTS.md)
 - **詳細技術規劃與資料模型**：[`PLAN.md`](./PLAN.md)
 - **論文復現與消融實驗報告**：[`reports/raw-rag-reproduction-report.md`](./reports/raw-rag-reproduction-report.md)
+
+---
+
+## 7. 引用與致謝（Citation & Acknowledgements）
+
+本專案的底層記憶機制與架構依據 **RAW-RAG** 研究成果實作。若在研究或工程中使用本專案或原始論文，請引用原作者論文與官方專案：
+
+- **官方專案**：[Litmeb/RAW-RAG (GitHub)](https://github.com/Litmeb/RAW-RAG)
+- **論文**：*Is Complex Agentic Memory Always Needed? Naive RAG Is Stronger Than We Thought* (arXiv:2610.30755)
+
+```bibtex
+@misc{bao2026complexagenticmemory,
+  title         = {Is Complex Agentic Memory Always Needed? Naive {RAG} Is Stronger Than We Thought},
+  author        = {Bao, Zhengye and Zhang, Shengtao and Zhang, Haokai and Lou, Shiqi and Wen, Muning and Luo, Minnan},
+  year          = {2026},
+  note          = {arXiv preprint},
+  eprint        = {2610.30755},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI},
+  url           = {https://arxiv.org/abs/2610.30755}
+}
+```
