@@ -14,6 +14,7 @@
 ├── pyproject.toml                   # uv 專案與 CLI entrypoints 設定
 ├── configs/
 │   ├── default_config.yaml          # 切塊 (256/32)、Top-k (128/15)、Dynamic Top-K (預設開啟)、MLX 模型與路徑設定
+│   ├── com.user.agent-raw-rag.plist.template # macOS LaunchAgent 常駐背景守護進程服務樣板
 │   ├── claude_hooks_snippet.json    # Claude Code ~/.claude/settings.json 接線設定
 │   ├── codex_config_snippet.toml    # Codex ~/.codex/config.toml 接線設定
 │   ├── opencode_snippet.json        # OpenCode ~/.config/opencode/opencode.json 接線設定
@@ -41,12 +42,16 @@
 │       │   ├── chunker.py           # 移植 RAGAdapter.add_incremental_message + _build_turn_context
 │       │   ├── store.py             # SQLite WAL 三表架構 (sessions, chunks, ingestion_cursors)
 │       │   └── mlx_retriever.py     # MLX Qwen3-Embedding-4B + Qwen3-Reranker-4B/0.6B + Dynamic Top-K + Turn 展開
-│       ├── cli.py                   # `raw-rag-ingest` CLI (供各 Agent Hook 非阻塞呼叫，支援 --status 觀測)
+│       ├── cli.py                   # `raw-rag-ingest` CLI (支援 --status 觀測、--watch 輪詢與 LaunchAgent 服務管理)
 │       └── mcp_server.py            # `raw-rag-mcp` 標準 stdio MCP Server
 └── tests/
     ├── test_sanitizer.py
     ├── test_incremental_chunker.py
     ├── test_parsers.py
+    ├── test_status_cli.py
+    ├── test_two_stage_deferred_retrieval.py
+    ├── test_retrieval_real_weights.py
+    ├── test_daemon_cli.py
     └── test_end_to_end_retrieval.py
 ```
 

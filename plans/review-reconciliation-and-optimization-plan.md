@@ -274,10 +274,10 @@ flowchart LR
 - [x] 在 MCP Tool `raw_rag_status` 中加入模型載入狀態，回報真實運作中的模型檔名與維度。
 - [x] 新增 `tests/test_retrieval_real_weights.py`，作為獨立的真實權重端到端評估套件。
 
-### Phase 4：常駐守護服務化（macOS LaunchAgent）
-- [ ] 撰寫 `configs/com.user.agent-raw-rag.plist.template`。
-- [ ] 在 `cli.py` 實作 `--install-daemon`、`--uninstall-daemon`、`--daemon-status` 指令。
-- [ ] 撰寫 LaunchAgent 部署與維護手冊，納入 `README.md`。
+### Phase 4：常駐守護服務化（macOS LaunchAgent - 已完成 ✅）
+- [x] 撰寫 `configs/com.user.agent-raw-rag.plist.template`。
+- [x] 在 `cli.py` 實作 `--install-daemon`、`--uninstall-daemon`、`--daemon-status` 指令。
+- [x] 撰寫 LaunchAgent 部署與維護手冊，納入 `README.md`。
 
 ---
 

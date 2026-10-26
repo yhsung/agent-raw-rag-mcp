@@ -11,6 +11,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
+import plistlib
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -616,6 +619,129 @@ def render_status_text(
     return "\n".join(output_lines)
 
 
+LAUNCH_AGENT_LABEL = "com.user.agent-raw-rag"
+LAUNCH_AGENT_DIR = Path.home() / "Library" / "LaunchAgents"
+LAUNCH_AGENT_PLIST = LAUNCH_AGENT_DIR / f"{LAUNCH_AGENT_LABEL}.plist"
+DEFAULT_LOG_DIR = Path.home() / ".local" / "state" / "agent-raw-rag" / "logs"
+
+
+def install_launch_agent(interval: int = 15, config_path: Optional[str] = None) -> int:
+    """Render template and register macOS LaunchAgent background service."""
+    pkg_dir = Path(__file__).resolve().parent.parent.parent
+    template_path = pkg_dir / "configs" / f"{LAUNCH_AGENT_LABEL}.plist.template"
+    if not template_path.exists():
+        print(f"Error: LaunchAgent template not found at {template_path}")
+        return 1
+
+    template_content = template_path.read_text(encoding="utf-8")
+
+    python_exec = sys.executable
+    working_dir = str(pkg_dir)
+    log_dir = DEFAULT_LOG_DIR
+    log_dir.mkdir(parents=True, exist_ok=True)
+    env_path = os.environ.get("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")
+
+    rendered = (
+        template_content
+        .replace("{{WORKING_DIR}}", working_dir)
+        .replace("{{PYTHON_EXEC}}", python_exec)
+        .replace("{{INTERVAL}}", str(interval))
+        .replace("{{PATH}}", env_path)
+        .replace("{{LOG_DIR}}", str(log_dir))
+    )
+
+    try:
+        plistlib.loads(rendered.encode("utf-8"))
+    except Exception as e:
+        print(f"Error: Rendered LaunchAgent plist is invalid: {e}")
+        return 1
+
+    LAUNCH_AGENT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Unload previous service if already loaded
+    if LAUNCH_AGENT_PLIST.exists():
+        subprocess.run(["launchctl", "unload", str(LAUNCH_AGENT_PLIST)], capture_output=True)
+
+    LAUNCH_AGENT_PLIST.write_text(rendered, encoding="utf-8")
+
+    res = subprocess.run(["launchctl", "load", str(LAUNCH_AGENT_PLIST)], capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"Warning: launchctl load returned code {res.returncode}: {res.stderr.strip()}")
+    else:
+        print(f"✅ Successfully registered and started LaunchAgent service: {LAUNCH_AGENT_LABEL}")
+
+    print(f"  • Plist Location:   {LAUNCH_AGENT_PLIST}")
+    print(f"  • Log Directory:    {log_dir}")
+    print(f"  • Polling Interval: {interval}s")
+    print(f"  • StandardOut Log:  {log_dir}/raw_rag_daemon.log")
+    print(f"  • StandardError Log:{log_dir}/raw_rag_daemon.err")
+    return 0
+
+
+def uninstall_launch_agent() -> int:
+    """Unload and remove macOS LaunchAgent background service."""
+    if not LAUNCH_AGENT_PLIST.exists():
+        print(f"Notice: LaunchAgent plist not found at {LAUNCH_AGENT_PLIST} (already uninstalled).")
+        return 0
+
+    subprocess.run(["launchctl", "unload", str(LAUNCH_AGENT_PLIST)], capture_output=True, text=True)
+    try:
+        LAUNCH_AGENT_PLIST.unlink()
+        print(f"✅ Successfully stopped and uninstalled LaunchAgent service: {LAUNCH_AGENT_LABEL}")
+        return 0
+    except Exception as e:
+        print(f"Error removing plist file: {e}")
+        return 1
+
+
+def check_launch_agent_status() -> int:
+    """Inspect status of macOS LaunchAgent service and tail logs."""
+    installed = LAUNCH_AGENT_PLIST.exists()
+    print(f"=== {LAUNCH_AGENT_LABEL} LaunchAgent Status ===")
+    print(f"Installed:  {'YES' if installed else 'NO'} ({LAUNCH_AGENT_PLIST})")
+
+    running = False
+    pid = "-"
+    last_exit = "-"
+
+    res = subprocess.run(["launchctl", "list"], capture_output=True, text=True)
+    for line in res.stdout.splitlines():
+        if LAUNCH_AGENT_LABEL in line:
+            parts = line.split()
+            if len(parts) >= 3:
+                pid, last_exit = parts[0], parts[1]
+                running = True if pid != "-" else False
+            break
+
+    status_str = (
+        f"RUNNING (PID: {pid})"
+        if running
+        else (f"LOADED (Last Exit Code: {last_exit})" if installed else "NOT LOADED")
+    )
+    print(f"State:      {status_str}")
+
+    stdout_log = DEFAULT_LOG_DIR / "raw_rag_daemon.log"
+    stderr_log = DEFAULT_LOG_DIR / "raw_rag_daemon.err"
+
+    if stdout_log.exists():
+        lines = stdout_log.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+        print(f"\nRecent Output Logs ({stdout_log}):")
+        if lines:
+            for l in lines[-5:]:
+                print(f"  {l}")
+        else:
+            print("  (Log file is empty)")
+
+    if stderr_log.exists():
+        err_lines = stderr_log.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+        if err_lines:
+            print(f"\nRecent Error Logs ({stderr_log}):")
+            for l in err_lines[-5:]:
+                print(f"  {l}")
+
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="agent-raw-rag-mcp incremental ingestion CLI"
@@ -651,8 +777,33 @@ def main() -> None:
         default=15,
         help="Polling interval in seconds for --watch (default: 15s)",
     )
+    parser.add_argument(
+        "--install-daemon",
+        action="store_true",
+        help="Install and register macOS LaunchAgent background service",
+    )
+    parser.add_argument(
+        "--uninstall-daemon",
+        action="store_true",
+        help="Unload and remove macOS LaunchAgent background service",
+    )
+    parser.add_argument(
+        "--daemon-status",
+        action="store_true",
+        help="Check status of macOS LaunchAgent background service",
+    )
 
     args = parser.parse_args()
+
+    if args.install_daemon:
+        sys.exit(install_launch_agent(interval=args.interval, config_path=args.config))
+
+    if args.uninstall_daemon:
+        sys.exit(uninstall_launch_agent())
+
+    if args.daemon_status:
+        sys.exit(check_launch_agent_status())
+
     config = load_config(args.config)
     engine = IngestionEngine(config)
 

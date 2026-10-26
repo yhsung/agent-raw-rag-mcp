@@ -94,8 +94,9 @@ flowchart TD
 ### 4.2 CLI 命令
 
 ```bash
-# 查看資料庫索引狀態
+# 查看資料庫索引與推論引擎即時狀態 (ASCII 表格 / JSON)
 raw-rag-ingest --status
+raw-rag-ingest --status --json
 
 # 執行一次全量/增量掃描同步
 raw-rag-ingest
@@ -104,8 +105,13 @@ raw-rag-ingest
 raw-rag-ingest --agent omp
 raw-rag-ingest --agent antigravity
 
-# 背景守護輪詢模式（每 30 秒自動增量同步）
-raw-rag-ingest --watch &
+# 前台輪詢背景模式 (每 15 秒自動增量同步)
+raw-rag-ingest --watch --interval 15
+
+# macOS LaunchAgent 系統常駐服務管理 (自動開機/登入啟動)
+raw-rag-ingest --install-daemon    # 安裝並註冊 LaunchAgent 常駐背景服務
+raw-rag-ingest --daemon-status     # 檢查 LaunchAgent 常駐服務運行狀態與日誌
+raw-rag-ingest --uninstall-daemon  # 停止並卸載 LaunchAgent 服務
 ```
 
 ---
