@@ -13,34 +13,35 @@
 ├── PLAN.md                          # 本技術規劃書
 ├── pyproject.toml                   # uv 專案與 CLI entrypoints 設定
 ├── configs/
-│   ├── default_config.yaml          # 切塊 (256/32)、Top-k (128/15)、MLX 模型與路徑設定
+│   ├── default_config.yaml          # 切塊 (256/32)、Top-k (128/15)、Dynamic Top-K (預設開啟)、MLX 模型與路徑設定
 │   ├── claude_hooks_snippet.json    # Claude Code ~/.claude/settings.json 接線設定
 │   ├── codex_config_snippet.toml    # Codex ~/.codex/config.toml 接線設定
 │   ├── opencode_snippet.json        # OpenCode ~/.config/opencode/opencode.json 接線設定
 │   └── omp_extension_raw_rag.ts     # Oh My Pi ~/.omp/agent/extensions/raw-rag.ts 擴充腳本
 ├── reports/
-│   ├── raw-rag-cli-agents-blueprint.html      # 四大 CLI Agent 整合架構藍圖 (HTML)
+│   ├── raw-rag-cli-agents-blueprint.html      # 五大 CLI Agent 整合架構藍圖 (HTML)
 │   ├── raw-rag-data-payload-explained.html    # Raw-RAG 資料結構與檢索負載圖解 (HTML)
 │   ├── raw-rag-scaling-architecture.html      # Raw-RAG 膨脹管理與架構圖解 (HTML)
 │   └── raw-rag-reproduction-report.md         # 論文完整復現與反向消融報告 (Markdown)
 ├── src/
 │   └── agent_raw_rag/
 │       ├── __init__.py
-│       ├── config.py                # 讀取設定與環境變數 (強制 HF_HOME=/Volumes/Samsung980/hf-home/)
-│       ├── models.py                # NormalizedTurn,SessionState, ChunkRecord 資料模型
+│       ├── config.py                # 讀取設定與環境變數 (強制 HF_HOME=/Volumes/Samsung980/hf-home/，支援 4B 與 0.6B)
+│       ├── models.py                # NormalizedTurn, SessionMetadata, ChunkRecord, TurnContext 資料模型
 │       ├── parsers/
 │       │   ├── __init__.py
 │       │   ├── sanitizer.py         # Deterministic Sanitizer (濾除巨型 Tool stdout，保留對白與動作摘要)
 │       │   ├── claude_parser.py     # 解析 ~/.claude/projects/<slug>/*.jsonl (增量 byte_offset)
 │       │   ├── codex_parser.py      # 解析 ~/.codex/sessions/**/rollout-*.jsonl (增量 byte_offset)
 │       │   ├── opencode_parser.py   # 解析 ~/.local/share/opencode/opencode.db (SQLite time_created 游標)
-│       │   └── omp_parser.py        # 解析 ~/.omp/agent/sessions/<slug>/*.jsonl (增量 byte_offset)
+│       │   ├── omp_parser.py        # 解析 ~/.omp/agent/sessions/<slug>/*.jsonl (增量 byte_offset)
+│       │   └── antigravity_parser.py # 解析 ~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl
 │       ├── engine/
 │       │   ├── __init__.py
 │       │   ├── chunker.py           # 移植 RAGAdapter.add_incremental_message + _build_turn_context
-│       │   ├── store.py             # SQLite + NumPy memmap / pgvector 增量儲存與游標管理
-│       │   └── mlx_retriever.py     # MLX Qwen3-Embedding-4B + Qwen3-Reranker-4B + 時序重排 + Turn 展開
-│       ├── cli.py                   # `raw-rag-ingest` CLI (供各 Agent Hook 非阻塞呼叫)
+│       │   ├── store.py             # SQLite WAL 三表架構 (sessions, chunks, ingestion_cursors)
+│       │   └── mlx_retriever.py     # MLX Qwen3-Embedding-4B + Qwen3-Reranker-4B/0.6B + Dynamic Top-K + Turn 展開
+│       ├── cli.py                   # `raw-rag-ingest` CLI (供各 Agent Hook 非阻塞呼叫，支援 --status 觀測)
 │       └── mcp_server.py            # `raw-rag-mcp` 標準 stdio MCP Server
 └── tests/
     ├── test_sanitizer.py
@@ -80,7 +81,7 @@ Branch: {git_branch}
 
 ---
 
-## 3. 四大 CLI 工具解析器規格（`src/agent_raw_rag/parsers/`）
+## 3. 五大 CLI 工具解析器規格（`src/agent_raw_rag/parsers/`）
 
 | 解析器 | 本機資料路徑 | 增量游標（Cursor Key） | 欄位提取重點 |
 | :--- | :--- | :--- | :--- |
@@ -88,6 +89,7 @@ Branch: {git_branch}
 | **`codex_parser.py`** | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | `(file_path, byte_offset)` | 讀取 JSONL 事件中的 `message`、`function_call`、`function_call_output` 與 `timestamp`。 |
 | **`opencode_parser.py`** | `~/.local/share/opencode/opencode.db` | `(session_id, last_part_time_created)` | 以唯讀模式連線 `file:...?mode=ro`；查詢 `session`、`message`、`part` 表；僅提取文字與工具名稱摘要，**跳過 `part` 表中數 MB 的 raw tool output**。 |
 | **`omp_parser.py`** | `~/.omp/agent/sessions/<slug>/*.jsonl` | `(file_path, byte_offset)` | 解析 Oh My Pi 的 session JSONL 事件（`user`、`assistant`、`toolResult`）與專案路徑。 |
+| **`antigravity_parser.py`** | `~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl` | `(file_path, byte_offset)` | 解析 Google Antigravity 的 JSONL 事件流（`USER_INPUT`、`PLANNER_RESPONSE`、工具摘要）與專案工作區路徑。 |
 
 ---
 
@@ -107,26 +109,27 @@ Branch: {git_branch}
      - 呼叫 `_annotate_token_chunks_with_turns` 標記每個區塊的 `start_turn` 與 `end_turn`。
      - 僅對 `tail_chunks` 計算 Embedding 並寫入儲存層。
 
-2. **儲存層（`store.py`）**：
-   - 預設儲存路徑：`/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/data/raw_rag.db`（SQLite WAL 模式 + 浮點向量 Blob / NumPy memmap，並預留切換 `pgvector` 之介面）。
-   - 資料表結構：
-     - `ingestion_cursors(source_key TEXT PRIMARY KEY, agent TEXT, byte_offset INTEGER, last_timestamp INTEGER, updated_at TEXT)`
-     - `sessions(session_id TEXT PRIMARY KEY, agent TEXT, project_path TEXT, git_branch TEXT, header TEXT, turn_context_json TEXT, total_tokens INTEGER, updated_at TEXT)`
-     - `chunks(chunk_id TEXT PRIMARY KEY, session_id TEXT, chunk_index INTEGER, project_path TEXT, agent TEXT, content TEXT, start_token INTEGER, end_token INTEGER, start_turn INTEGER, end_turn INTEGER, start_date TEXT, end_date TEXT, embedding BLOB)`
+2. **儲存層架構與低膨脹設計（`store.py`）**：
+   - 預設儲存路徑：`/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/data/raw_rag.db`（SQLite WAL 模式 + 浮點向量 Blob / NumPy memmap）。
+   - **實體 Schema 為 3 張核心表**（不設獨立 `turns` 表）：
+     - `ingestion_cursors(source_key TEXT PRIMARY KEY, agent TEXT, byte_offset INTEGER, last_timestamp INTEGER, updated_at TEXT)`：各 Agent 檔案增量位移與時間戳記。
+     - `sessions(session_id TEXT PRIMARY KEY, agent TEXT, project_path TEXT, git_branch TEXT, header TEXT, turn_context_json TEXT, units_blob BLOB, total_tokens INTEGER, updated_at TEXT)`：會話階層中繼資料，對話脈絡直接以 `turn_context_json` 緊湊序列化儲存。**設計優勢**：若將數十萬對白拆為獨立 `turns` 表，將引發數百萬行小列索引膨脹、B-Tree 深度增加與頻繁 WAL 寫入競爭；以 JSON 序列化封裝可維持 $O(1)$ 單會話寫入與極低磁碟開銷。
+     - `chunks(chunk_id TEXT PRIMARY KEY, session_id TEXT, chunk_index INTEGER, project_path TEXT, agent TEXT, content TEXT, start_token INTEGER, end_token INTEGER, start_turn INTEGER, end_turn INTEGER, start_date TEXT, end_date TEXT, session_timestamp TEXT, embedding BLOB)`：256-token 緊湊切片與 Dense 向量。
 
 ---
 
 ## 5. 本機 MLX 兩階段檢索與呈現期展開（`mlx_retriever.py`）
 
 1. **模型配置（`HF_HOME=/Volumes/Samsung980/hf-home/`）**：
-   - Embedding：`Qwen/Qwen3-Embedding-4B`（MLX 後端，2560 維，支援指令前綴 `Instruct: Given a search query, retrieve relevant conversation passages that answer the query\nQuery: `）。
-   - Reranker：`Qwen/Qwen3-Reranker-4B`（MLX 後端，計算 `yes` / `no` logit 分數）。
-2. **檢索五步驟**：
-   - **Step 1（範圍與時序過濾）**：依 `project_path`（可選跨專案）、`agent`（可選）、`after_date` / `before_date` 篩出可見區塊。
-   - **Step 2（Dense 粗排 Top-128）**：以矩陣內積（Cosine Similarity）快速選出前 `candidate_top_k = 128` 個區塊。
-   - **Step 3（Cross-Encoder 精排 Top-15）**：以 `Qwen3-Reranker-4B` 對 128 個候選評分，取前 `rerank_top_k = 15`（若啟用 `dynamic_top_k`，保留 `rerank_score >= 0.5` 之區塊，不足時保底取前 3）。
+   - Embedding：`mlx-community/Qwen3-Embedding-4B-4bit-DWQ`（對應 `Qwen/Qwen3-Embedding-4B`，2560 維，支援指令前綴 `Instruct: Given a search query, retrieve relevant conversation passages that answer the query\nQuery: `）。
+   - Reranker：預設採用 `mlx-community/Qwen3-Reranker-4B-4bit`（或 `mxfp8`），並顯式支援低延遲模式 `mlx-community/Qwen3-Reranker-0.6B-4bit`。以 2-column Logit Projection 最佳化計算 `yes` / `no` 分數。
+2. **兩階段延遲檢索與批次展開五步驟（消除全表暴力載入與 N+1 查詢）**：
+   - **Step 1（範圍過濾與輕量向量投影載入）**：透過 `store.load_candidate_vector_index` 僅自 `chunks` 表撈取 `chunk_id` 與 `embedding` BLOB，不載入 `content` 與中繼欄位，將十萬切片記憶體峰值壓制在 100 MB 內（降低 85% 記憶體開銷）。
+   - **Step 2（Dense 粗排 Top-128）**：以矩陣內積（Cosine Similarity）快速計算分數，選出前 `candidate_top_k = 128` 之 `chunk_id` 集合。
+   - **Step 2.5（精準延遲水合 Deferred Hydration）**：透過 `store.get_chunks_by_ids` 僅針對 Top-128 切片批次自 SQLite 載入完整 `content` 與回合座標，省略向量 BLOB，節省後續記憶體。
+   - **Step 3（Cross-Encoder 精排 Top-15 & Dynamic Top-K）**：以 `Qwen3-Reranker` 對 128 個候選評分，取前 `rerank_top_k = 15`。**預設啟用 `dynamic_top_k: true`**：保留 `rerank_score >= 0.5` 之區塊，不足時保底取前 3 個高分切片，嚴格過濾無關雜訊。
    - **Step 4（時序升冪重排）**：依 `(session_start_timestamp, start_turn, start_token, chunk_index)` **由舊到新排序**，讓 CLI Agent 直接看清狀態與決策的演進順序。
-   - **Step 5（呈現期動態回合展開，`_expand_chunk_to_turns`）**：查詢該 `session_id` 的 `turn_context.turn_spans`，將命中的 256-token 切片展開為完整的 `User` / `Assistant` 回合，並用 `seen_turns: set[(session_id, turn_idx)]` 自動去除相鄰區塊的重疊回合。
+   - **Step 5（單次批次動態展開，`get_turn_contexts_batch`）**：在動態展開前，以 Set 聚合命中切片的 `session_ids`，單次批次查詢 `sessions` 表並透過記憶體 LRU 快取解析 `TurnContext`（**將資料庫查詢次數自 $N$ 次降為嚴格 1 次，徹底根除 N+1 查詢**），隨後呼叫 `_expand_chunk_to_turns` 展開完整對話回合並自動去除重疊回合。
 
 ---
 

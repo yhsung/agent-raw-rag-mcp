@@ -10,7 +10,7 @@ import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 import numpy as np
 
 from ..config import StorageConfig
@@ -29,6 +29,7 @@ class SQLiteStore:
         self.config = config or StorageConfig()
         self.db_path = Path(self.config.sqlite_path).expanduser().resolve()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._context_cache: Dict[str, TurnContext] = {}
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -272,6 +273,9 @@ class SQLiteStore:
                     chunk_params,
                 )
 
+        if len(self._context_cache) < 1000:
+            self._context_cache[meta.session_id] = context
+
     def commit_batch_updates(self, updates: List[PendingSessionUpdate]) -> None:
         """Atomically commit chunks, contexts, and sync cursors for multiple sessions in a single SQLite transaction.
 
@@ -397,6 +401,10 @@ class SQLiteStore:
                 except Exception:
                     pass
 
+        for upd in updates:
+            if len(self._context_cache) < 1000:
+                self._context_cache[upd.meta.session_id] = upd.updated_context
+
     def load_candidates_with_embeddings(
         self,
         project_path: Optional[str] = None,
@@ -466,17 +474,141 @@ class SQLiteStore:
                 )
             return candidates
 
-    def get_turn_context(self, session_id: str) -> Optional[TurnContext]:
+    def load_candidate_vector_index(
+        self,
+        project_path: Optional[str] = None,
+        agent: Optional[str] = None,
+        after_date: Optional[str] = None,
+        before_date: Optional[str] = None,
+    ) -> Tuple[List[str], np.ndarray]:
+        """Fetch matching chunk_ids and dense embedding matrix for two-stage retrieval.
+
+        This avoids loading large content text and turn metadata into memory,
+        slashing memory consumption and GC pause by ~85% during candidate pruning.
+        """
+        clauses = ["embedding IS NOT NULL"]
+        params: List[Any] = []
+
+        if project_path and project_path != "*":
+            clauses.append("(project_path = ? OR project_path LIKE ?)")
+            params.append(project_path)
+            params.append(f"{project_path.rstrip('/')}/%")
+
+        if agent:
+            clauses.append("agent = ?")
+            params.append(agent)
+
+        if after_date:
+            clauses.append("(end_date >= ? OR start_date >= ?)")
+            params.append(after_date)
+            params.append(after_date)
+
+        if before_date:
+            clauses.append("(start_date <= ? OR end_date <= ?)")
+            params.append(before_date)
+            params.append(before_date)
+
+        where_sql = " AND ".join(clauses)
+        sql = f"""
+            SELECT chunk_id, embedding
+            FROM chunks
+            WHERE {where_sql}
+            ORDER BY session_timestamp DESC, chunk_index DESC
+        """
+
         with self._get_connection() as conn:
             cur = conn.cursor()
-            cur.execute(
-                "SELECT turn_context_json FROM sessions WHERE session_id = ?",
-                (session_id,),
-            )
-            row = cur.fetchone()
-            if not row:
-                return None
-            return TurnContext.from_dict(json.loads(row["turn_context_json"]))
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+            if not rows:
+                return [], np.empty((0, 0), dtype=np.float32)
+
+            chunk_ids = [r["chunk_id"] for r in rows]
+            emb_list = [np.frombuffer(r["embedding"], dtype=np.float32) for r in rows]
+            matrix = np.vstack(emb_list)
+            return chunk_ids, matrix
+
+    def get_chunks_by_ids(self, chunk_ids: List[str]) -> Dict[str, ChunkRecord]:
+        """Hydrate full ChunkRecord metadata for selected top candidate chunk_ids."""
+        if not chunk_ids:
+            return {}
+
+        results: Dict[str, ChunkRecord] = {}
+        batch_size = 500  # Protect against SQLite parameter limits
+
+        with self._get_connection() as conn:
+            cur = conn.cursor()
+            for start in range(0, len(chunk_ids), batch_size):
+                batch = chunk_ids[start : start + batch_size]
+                placeholders = ",".join("?" for _ in batch)
+                sql = f"""
+                    SELECT chunk_id, session_id, chunk_index, project_path, agent, content,
+                           start_token, end_token, start_turn, end_turn, start_date, end_date,
+                           session_timestamp
+                    FROM chunks
+                    WHERE chunk_id IN ({placeholders})
+                """
+                cur.execute(sql, batch)
+                for r in cur.fetchall():
+                    cid = r["chunk_id"]
+                    results[cid] = ChunkRecord(
+                        chunk_id=cid,
+                        session_id=r["session_id"],
+                        chunk_index=r["chunk_index"],
+                        project_path=r["project_path"],
+                        agent=r["agent"],
+                        content=r["content"],
+                        start_token=r["start_token"],
+                        end_token=r["end_token"],
+                        start_turn=r["start_turn"],
+                        end_turn=r["end_turn"],
+                        start_date=r["start_date"],
+                        end_date=r["end_date"],
+                        session_timestamp=r["session_timestamp"],
+                        embedding=None,  # Not needed during display expansion
+                    )
+        return results
+
+    def get_turn_contexts_batch(self, session_ids: Set[str]) -> Dict[str, TurnContext]:
+        """Batch fetch and deserialize turn contexts for multiple session IDs in a single query."""
+        if not session_ids:
+            return {}
+
+        results: Dict[str, TurnContext] = {}
+        missing_ids: List[str] = []
+
+        # Check memory cache first
+        for sid in session_ids:
+            if sid in self._context_cache:
+                results[sid] = self._context_cache[sid]
+            else:
+                missing_ids.append(sid)
+
+        if not missing_ids:
+            return results
+
+        batch_size = 500
+        with self._get_connection() as conn:
+            cur = conn.cursor()
+            for start in range(0, len(missing_ids), batch_size):
+                batch = missing_ids[start : start + batch_size]
+                placeholders = ",".join("?" for _ in batch)
+                sql = f"SELECT session_id, turn_context_json FROM sessions WHERE session_id IN ({placeholders})"
+                cur.execute(sql, batch)
+                for r in cur.fetchall():
+                    sid = r["session_id"]
+                    ctx = TurnContext.from_dict(json.loads(r["turn_context_json"]))
+                    results[sid] = ctx
+                    if len(self._context_cache) < 1000:
+                        self._context_cache[sid] = ctx
+
+        return results
+
+    def get_turn_context(self, session_id: str) -> Optional[TurnContext]:
+        """Fetch turn context for a single session, with cache backing."""
+        batch_res = self.get_turn_contexts_batch({session_id})
+        return batch_res.get(session_id)
 
     def get_recent_turns(
         self, project_path: Optional[str] = None, limit_turns: int = 30

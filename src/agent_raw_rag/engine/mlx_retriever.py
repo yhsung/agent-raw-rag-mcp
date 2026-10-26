@@ -271,27 +271,38 @@ class MLXRetriever:
         """Execute the two-stage Raw-RAG bounded search pipeline."""
         t0 = time.perf_counter()
 
-        # Step 1: Pre-filter candidate chunks
-        candidates = self.store.load_candidates_with_embeddings(
+        # Step 1: Pre-filter candidate vector index (Deferred Loading)
+        chunk_ids, matrix = self.store.load_candidate_vector_index(
             project_path=project_path,
             agent=agent,
             after_date=after_date,
             before_date=before_date,
         )
-        if not candidates:
+        if not chunk_ids:
             return []
 
         # Step 2: Dense Cosine Similarity (Top-128)
         query_vec = self.embed_texts([query], is_query=True)[0]
-        matrix = np.vstack([c.embedding for c in candidates])  # (N, D)
         # Cosine similarity since embeddings are normalized
         sim_scores = np.dot(matrix, query_vec)
 
-        candidate_cap = min(self.config.candidate_top_k, len(candidates))
+        candidate_cap = min(self.config.candidate_top_k, len(chunk_ids))
         top_cand_indices = np.argsort(sim_scores)[::-1][:candidate_cap]
 
-        cand_chunks = [candidates[i] for i in top_cand_indices]
-        cand_sims = [float(sim_scores[i]) for i in top_cand_indices]
+        top_chunk_ids = [chunk_ids[i] for i in top_cand_indices]
+        top_sims = [float(sim_scores[i]) for i in top_cand_indices]
+
+        # Step 2.5: Hydrate only Top-K candidates for Reranking
+        chunks_map = self.store.get_chunks_by_ids(top_chunk_ids)
+        cand_chunks: List[ChunkRecord] = []
+        cand_sims: List[float] = []
+        for cid, sim in zip(top_chunk_ids, top_sims):
+            if cid in chunks_map:
+                cand_chunks.append(chunks_map[cid])
+                cand_sims.append(sim)
+
+        if not cand_chunks:
+            return []
 
         # Step 3: Cross-Encoder Rerank (Top-15)
         rerank_scores = self.compute_rerank_scores(
@@ -330,12 +341,15 @@ class MLXRetriever:
                 )
             )
 
-        # Step 5: Display-Time Dynamic Turn Expansion
+        # Step 5: Display-Time Dynamic Turn Expansion (Batch Fetch Contexts - 0 N+1 Queries)
         results: List[SearchResult] = []
         seen_turns: Set[Tuple[str, int]] = set()
 
+        target_session_ids = {chunk.session_id for chunk, _, _ in selected}
+        contexts_map = self.store.get_turn_contexts_batch(target_session_ids)
+
         for chunk, sim, r_score in selected:
-            turn_ctx = self.store.get_turn_context(chunk.session_id)
+            turn_ctx = contexts_map.get(chunk.session_id)
             if turn_ctx:
                 expanded_text = self.chunker.expand_chunk_to_turns(
                     chunk, turn_ctx, seen_turns=seen_turns

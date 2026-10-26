@@ -101,7 +101,7 @@
   - `claude_parser.py`、`codex_parser.py`、`opencode_parser.py`、`omp_parser.py`：針對四大 CLI 工具各自的儲存結構（JSONL 與 SQLite），維護增量讀取游標（`byte_offset`、`last_message_id`、`time_created`），確保重複呼叫不產生重複轉錄。
 - [x] **Phase 2：增量尾部切塊與儲存引擎（`src/agent_raw_rag/engine/chunker.py` & `store.py`）**
   - `chunker.py`：以 `tiktoken` (`cl100k_base`) 實作 256-token 窗口（步長 224 tokens，重疊 32 tokens）的 $O(\Delta L)$ 尾部增量切塊，並同時產生高精度的 `turn_spans` 回合映射表。
-  - `store.py`：以 SQLite 為核心儲存（`sessions`、`turns`、`chunks`、`sync_cursors`），以二進位快取管理 Dense 向量索引，支援事務一致性與增量快照。
+  - `store.py`：以 SQLite 為核心儲存（`sessions`、`chunks`、`ingestion_cursors`），以二進位快取管理 Dense 向量索引，支援事務一致性與增量快照。會話回合脈絡直接以 `turn_context_json` 緊湊序列化儲存於 `sessions` 表中，避免獨立 `turns` 表在十萬級對白下引發數百萬行索引膨脹與 WAL 鎖競爭，維持極致低儲存開銷。
 - [x] **Phase 3：Apple Silicon MLX 檢索與動態展開引擎（`src/agent_raw_rag/engine/mlx_retriever.py`）**
   - `mlx_retriever.py`：整合本機 MLX 4-bit / 8-bit `Qwen3-Embedding-4B` 與 `Qwen3-Reranker-4B`，遵循兩階段漏斗（Dense 粗排 Top-128 $\to$ Cross-Encoder 精排 Top-15 $\to$ 動態分數門檻過濾）。
   - **時序升冪重排與動態展開**：檢索命中切片後，依原始對話時序（`session_timestamp, start_turn, start_token`）重排，並透過 `_expand_chunk_to_turns` 動態還原為完整 User/Assistant 對話回合，去除跨區塊重複回合。
@@ -111,3 +111,20 @@
 - [x] **Phase 5：四大 CLI Agent 接線腳本與端到端驗證（`configs/` & `tests/`）**
   - `configs/`：維護 Claude Code（Hook）、Codex CLI（TOML）、OpenCode（JSON）、Oh My Pi（TypeScript Extension）之即插即用接入配置。
   - `tests/`：涵蓋降噪器、四大解析器、尾部切塊、SQLite 儲存、MLX 兩階段檢索與 MCP 協定的端到端自動化測試套件。
+
+---
+
+## 6. 文件同步與計畫回寫規範（Documentation Synchronization & Plan Upstream Rule）
+
+為杜絕架構文件、實作計畫與真實程式碼產生落差，所有參與本專案的 AI Coding Agents 必須嚴格遵守以下文件同步守則：
+
+1. **修改完成即時回寫 `PLAN.md`（Single Source of Planning Truth）**：
+   - 任何 Agent 在完成程式碼重構、Bug 修復、資料表結構（Schema）異動、配置參數預設值微調或模型版本升級後，**必須立即將正確、最新且經測試驗證的資訊同步回寫至 [`PLAN.md`](./PLAN.md)**。
+   - 嚴禁讓 `PLAN.md` 停留在過時草案或與原始碼不符的狀態。
+2. **三位一體一致性（Code, Docs & Plans Parity）**：
+   - 每次提交或修改核心功能時，必須同步檢核：
+     - **真實程式碼（Code）**：例如 `store.py`、`config.py`、`default_config.yaml`。
+     - **架構規範與指引（Docs）**：`AGENTS.md`、`README.md`。
+     - **執行計畫與介面規格（Plans）**：`PLAN.md` 及 `plans/` 資料夾下的專案藍圖。
+   - 三者記載之資料表名稱（如 `ingestion_cursors`）、模型識別碼（如 `mlx-community/Qwen3-Reranker-4B-4bit`）及開關預設狀態（如 `dynamic_top_k.enabled: true`）必須保持 100% 事實一致。
+

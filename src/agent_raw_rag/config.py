@@ -45,7 +45,7 @@ class SanitizerConfig:
 
 @dataclass
 class DynamicTopKConfig:
-    enabled: bool = False
+    enabled: bool = True
     score_threshold: float = 0.5
     fallback_top_k: int = 3
 
@@ -53,7 +53,7 @@ class DynamicTopKConfig:
 @dataclass
 class RetrievalConfig:
     embedding_model: str = "mlx-community/Qwen3-Embedding-4B-4bit-DWQ"
-    reranker_model: str = "mlx-community/Qwen3-Reranker-0.6B-4bit"
+    reranker_model: str = "mlx-community/Qwen3-Reranker-4B-4bit"
     candidate_top_k: int = 128
     rerank_top_k: int = 15
     chronological_reorder: bool = True
@@ -174,18 +174,20 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
     ret_d = cfg_dict.get("retrieval", {})
     dyn_d = ret_d.get("dynamic_top_k", {})
     dyn_cfg = DynamicTopKConfig(
-        enabled=dyn_d.get("enabled", False),
+        enabled=dyn_d.get("enabled", True),
         score_threshold=dyn_d.get("score_threshold", 0.5),
         fallback_top_k=dyn_d.get("fallback_top_k", 3),
     )
 
-    # Use existing local MLX models if Qwen default is specified
+    # Resolve model identifiers to Apple Silicon MLX quantized variants if generic Qwen is specified
     raw_emb = ret_d.get("embedding_model", "mlx-community/Qwen3-Embedding-4B-4bit-DWQ")
     if "Qwen/Qwen3-Embedding" in raw_emb:
         raw_emb = "mlx-community/Qwen3-Embedding-4B-4bit-DWQ"
 
-    raw_rerank = ret_d.get("reranker_model", "mlx-community/Qwen3-Reranker-0.6B-4bit")
-    if "Qwen/Qwen3-Reranker-4B" in raw_rerank:
+    raw_rerank = ret_d.get("reranker_model", "mlx-community/Qwen3-Reranker-4B-4bit")
+    if raw_rerank in ("Qwen/Qwen3-Reranker-4B", "mlx-community/Qwen3-Reranker-4B"):
+        raw_rerank = "mlx-community/Qwen3-Reranker-4B-4bit"
+    elif raw_rerank in ("Qwen/Qwen3-Reranker-0.6B", "mlx-community/Qwen3-Reranker-0.6B"):
         raw_rerank = "mlx-community/Qwen3-Reranker-0.6B-4bit"
 
     ret_cfg = RetrievalConfig(

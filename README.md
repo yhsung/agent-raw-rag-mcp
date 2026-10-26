@@ -37,7 +37,7 @@ flowchart TD
 
     %% 儲存層
     subgraph S2["2. 儲存層 (Storage Engine)"]
-        DB[("SQLite + 二進位向量快取<br/>(sessions, turns, chunks, sync_cursors)")]
+        DB[("SQLite + 二進位向量快取<br/>(sessions, chunks, ingestion_cursors)")]
         INV3 -->|增量寫入| DB
     end
 

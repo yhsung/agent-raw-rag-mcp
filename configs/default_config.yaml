@@ -19,13 +19,13 @@ sanitizer:
   strip_full_diffs: true
 
 retrieval:
-  embedding_model: "Qwen/Qwen3-Embedding-4B"
-  reranker_model: "Qwen/Qwen3-Reranker-4B"
+  embedding_model: "mlx-community/Qwen3-Embedding-4B-4bit-DWQ"
+  reranker_model: "mlx-community/Qwen3-Reranker-4B-4bit" # 可切換為 "mlx-community/Qwen3-Reranker-0.6B-4bit" 低延遲模式
   candidate_top_k: 128
   rerank_top_k: 15
   chronological_reorder: true
   dynamic_top_k:
-    enabled: false
+    enabled: true
     score_threshold: 0.5
     fallback_top_k: 3
 
