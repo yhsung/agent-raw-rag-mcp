@@ -189,7 +189,7 @@ def main() -> None:
             from importlib.metadata import version
             v = version("agent-raw-rag-mcp")
         except Exception:
-            v = "0.1.0"
+            v = "0.2.0"
         print(f"agent-raw-rag-mcp {v}")
         return
     # Run the standard stdio server

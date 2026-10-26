@@ -45,6 +45,8 @@
 
 ```text
 /Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/
+├── README.md                        # 英文主說明文件 (Default README)
+├── README.zh-TW.md                  # 正體中文說明文件 (Traditional Chinese README)
 ├── AGENTS.md                        # AI Agent 核心規範與架構不變量
 ├── CLAUDE.md                        # Symlink -> AGENTS.md (相容 Claude Code)
 ├── PLAN.md                          # 本技術規劃書

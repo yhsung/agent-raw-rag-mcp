@@ -1,6 +1,6 @@
 [project]
 name = "agent-raw-rag-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Cross-agent Raw-RAG incremental memory indexer and MLX two-stage retrieval MCP server for Claude Code, Codex, OpenCode, Oh My Pi, and Antigravity"
 readme = "README.md"
 requires-python = ">=3.11"
