@@ -500,6 +500,7 @@ def render_status_text(
     stats: Dict[str, Any],
     target_agent: Optional[str] = None,
     agent_cursors: Optional[List[Dict[str, Any]]] = None,
+    engine_status: Optional[Dict[str, Any]] = None,
     title: str = "=== agent-raw-rag-mcp Storage Status ===",
 ) -> str:
     """Render human-readable multi-agent status text with ASCII table."""
@@ -510,10 +511,31 @@ def render_status_text(
     output_lines = [
         title,
         f"Database: {storage_path}",
+    ]
+
+    if engine_status:
+        device = engine_status.get("device", "Unknown")
+        mode = engine_status.get("mode", "UNKNOWN")
+        emb = engine_status.get("embedding", {})
+        rer = engine_status.get("reranker", {})
+        dyn = rer.get("dynamic_top_k", {})
+
+        output_lines.append(f"Inference Engine: {device} [{mode}]")
+        output_lines.append(
+            f"  • Embedding: {emb.get('model', 'N/A')} ({emb.get('dimension', 2560)}d) [{emb.get('status', 'N/A')}]"
+        )
+        dyn_str = f"Enabled > {dyn.get('score_threshold', 0.5)}" if dyn.get("enabled") else "Disabled"
+        output_lines.append(
+            f"  • Reranker:  {rer.get('model', 'N/A')} (Dynamic Top-K: {dyn_str}) [{rer.get('status', 'N/A')}]"
+        )
+        if engine_status.get("is_fallback"):
+            output_lines.append("  ⚠️ [Notice] Running on fallback scoring (token overlap/hash); download MLX models to activate full semantic precision.")
+
+    output_lines.extend([
         f"Total Sessions: {total_sessions} | Total Chunks: {total_chunks} | Status: ACTIVE",
         "",
         "Agent Ingestion Cursors & Dialogue Freshness:",
-    ]
+    ])
 
     agents_data = stats.get("agents", {})
 
@@ -636,6 +658,7 @@ def main() -> None:
 
     if args.status:
         stats = engine.store.get_stats()
+        eng_status = engine.retriever.engine_status
         agent_cursors = None
         if args.agent:
             agent_cursors = engine.store.get_agent_cursors(args.agent)
@@ -646,6 +669,7 @@ def main() -> None:
                 "total_sessions": stats["total_sessions"],
                 "total_chunks": stats["total_chunks"],
                 "overall_last_updated": stats["overall_last_updated"],
+                "engine": eng_status,
                 "agents": stats.get("agents", {}),
             }
             if args.agent and agent_cursors is not None:
@@ -655,7 +679,10 @@ def main() -> None:
         else:
             print(
                 render_status_text(
-                    stats, target_agent=args.agent, agent_cursors=agent_cursors
+                    stats,
+                    target_agent=args.agent,
+                    agent_cursors=agent_cursors,
+                    engine_status=eng_status,
                 )
             )
             sys.exit(0)

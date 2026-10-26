@@ -161,7 +161,7 @@ def raw_rag_ingest(
 @mcp.tool()
 def raw_rag_status(agent: Optional[str] = None) -> str:
     """Retrieve status, statistics, and multi-agent cursor freshness of the local Raw-RAG persistent memory index."""
-    _, store, _, _, _ = get_components()
+    _, store, _, retriever, _ = get_components()
     stats = store.get_stats()
     agent_cursors = None
     if agent:
@@ -170,6 +170,7 @@ def raw_rag_status(agent: Optional[str] = None) -> str:
         stats,
         target_agent=agent,
         agent_cursors=agent_cursors,
+        engine_status=retriever.engine_status,
         title="=== agent-raw-rag-mcp Status ===",
     )
 

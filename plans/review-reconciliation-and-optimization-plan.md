@@ -268,11 +268,11 @@ flowchart LR
   - 展開階段改為單次批次取得 Context，徹底消除 N+1 查詢。
 - [x] 單元測試驗證效能與結果一致性（`tests/test_two_stage_deferred_retrieval.py` 驗證完成）。
 
-### Phase 3：模型狀態可觀測性與真實基準套件
-- [ ] 在 `MLXRetriever` 實作 `engine_status`。
-- [ ] 在 `SQLiteStore.get_stats()` 與 `cli.py` 的 `--status` 輸出加入「推論後端狀態（MLX Native vs Fallback Mode）」。
-- [ ] 在 MCP Tool `raw_rag_status` 中加入模型載入狀態，回報真實運作中的模型檔名與維度。
-- [ ] 新增 `tests/test_retrieval_real_weights.py`，作為獨立的評估標註套件。
+### Phase 3：模型狀態可觀測性與真實基準套件（已完成 ✅）
+- [x] 在 `MLXRetriever` 實作 `engine_status`（暴露硬體加速、模型名稱、維度、載入狀態與回退標記）。
+- [x] 在 `cli.py` 的 `--status`（ASCII 表格與 `--json`）輸出加入「推論後端狀態（MLX Native vs Fallback Mode）」。
+- [x] 在 MCP Tool `raw_rag_status` 中加入模型載入狀態，回報真實運作中的模型檔名與維度。
+- [x] 新增 `tests/test_retrieval_real_weights.py`，作為獨立的真實權重端到端評估套件。
 
 ### Phase 4：常駐守護服務化（macOS LaunchAgent）
 - [ ] 撰寫 `configs/com.user.agent-raw-rag.plist.template`。

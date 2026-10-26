@@ -130,6 +130,10 @@ Branch: {git_branch}
    - **Step 3（Cross-Encoder 精排 Top-15 & Dynamic Top-K）**：以 `Qwen3-Reranker` 對 128 個候選評分，取前 `rerank_top_k = 15`。**預設啟用 `dynamic_top_k: true`**：保留 `rerank_score >= 0.5` 之區塊，不足時保底取前 3 個高分切片，嚴格過濾無關雜訊。
    - **Step 4（時序升冪重排）**：依 `(session_start_timestamp, start_turn, start_token, chunk_index)` **由舊到新排序**，讓 CLI Agent 直接看清狀態與決策的演進順序。
    - **Step 5（單次批次動態展開，`get_turn_contexts_batch`）**：在動態展開前，以 Set 聚合命中切片的 `session_ids`，單次批次查詢 `sessions` 表並透過記憶體 LRU 快取解析 `TurnContext`（**將資料庫查詢次數自 $N$ 次降為嚴格 1 次，徹底根除 N+1 查詢**），隨後呼叫 `_expand_chunk_to_turns` 展開完整對話回合並自動去除重疊回合。
+3. **推論引擎可觀測性與真實權重驗證**：
+   - `MLXRetriever.engine_status` 提供執行期硬體加速狀態（`Apple Silicon Metal GPU [MLX_ACCELERATED]` vs `CPU [FALLBACK]`）、Embedding 維度（2560d）、模型載入狀態及 Dynamic Top-K 門檻設定。
+   - `raw-rag-ingest --status` 與 MCP 工具 `raw_rag_status` 整合顯示引擎狀態，徹底消除無模型時靜默降級造成的品質誤判。
+   - 新增 `tests/test_retrieval_real_weights.py` 端到端真實權重評估套件，使用本機真實模型驗證跨領域對話檢索之語意召回率。
 
 ---
 

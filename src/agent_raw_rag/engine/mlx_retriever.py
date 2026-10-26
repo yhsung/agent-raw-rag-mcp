@@ -41,7 +41,48 @@ class MLXRetriever:
 
         self._embed_model_bundle: Optional[Dict[str, Any]] = None
         self._rerank_model_bundle: Optional[Dict[str, Any]] = None
+        self._embed_failed: bool = False
+        self._rerank_failed: bool = False
         self._embed_cache: Dict[str, np.ndarray] = {}
+
+    @property
+    def engine_status(self) -> Dict[str, Any]:
+        """Expose current inference engine and model backend details."""
+        is_fallback = (not HAS_MLX) or self._embed_failed or self._rerank_failed
+
+        embed_status = (
+            "mlx_native"
+            if (HAS_MLX and self._embed_model_bundle is not None)
+            else ("fallback_hash" if (not HAS_MLX or self._embed_failed) else "standby")
+        )
+        rerank_status = (
+            "mlx_native"
+            if (HAS_MLX and self._rerank_model_bundle is not None)
+            else ("fallback_token_overlap" if (not HAS_MLX or self._rerank_failed) else "standby")
+        )
+
+        return {
+            "has_mlx": HAS_MLX,
+            "is_fallback": is_fallback,
+            "mode": "FALLBACK" if is_fallback else "MLX_ACCELERATED",
+            "device": "Apple Silicon (Metal GPU)" if HAS_MLX else "CPU",
+            "embedding": {
+                "model": self.config.embedding_model,
+                "dimension": 2560,
+                "status": embed_status,
+                "loaded": self._embed_model_bundle is not None,
+            },
+            "reranker": {
+                "model": self.config.reranker_model,
+                "status": rerank_status,
+                "loaded": self._rerank_model_bundle is not None,
+                "dynamic_top_k": {
+                    "enabled": self.config.dynamic_top_k.enabled,
+                    "score_threshold": self.config.dynamic_top_k.score_threshold,
+                    "fallback_top_k": self.config.dynamic_top_k.fallback_top_k,
+                },
+            },
+        }
 
     def _load_embed_model(self) -> Optional[Dict[str, Any]]:
         if not HAS_MLX:
@@ -64,6 +105,7 @@ class MLXRetriever:
             }
             return self._embed_model_bundle
         except Exception as e:
+            self._embed_failed = True
             print(f"[MLXRetriever] Warning: Could not load embed model {repo_id}: {e}")
             return None
 
@@ -103,6 +145,7 @@ class MLXRetriever:
             }
             return self._rerank_model_bundle
         except Exception as e:
+            self._rerank_failed = True
             print(f"[MLXRetriever] Warning: Could not load rerank model {repo_id}: {e}")
             return None
 
