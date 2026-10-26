@@ -1,6 +1,44 @@
 # `agent-raw-rag-mcp` 詳細技術規劃與介面規格（Implementation Plan）
 
-本文件定義 `agent-raw-rag-mcp` 的完整資料結構、四大 CLI 解析器規格、儲存與檢索演算法，以及 MCP 工具介面，供後續在 **Antigravity** 或 **Oh My Pi (`omp`)** 中直接按表施工。
+本文件為專案的 **Single Source of Truth (SSOT)**，定義 `agent-raw-rag-mcp` 的全域架構可追溯性、核心資料結構、五大 CLI 解析器規格、儲存與檢索演算法，以及 MCP 工具介面。
+
+---
+
+## 0. 全域追溯性與生命週期矩陣（Global Traceability & Lifecycle Matrix）
+
+專案內所有技術報告（`reports/`）與執行子計畫（`plans/`）嚴格依據其工程推進生命週期，歸納於以下三大狀態，並統一與本 Master `PLAN.md` 雙向鏈結：
+
+### 狀態 1：調研與決策參考（State 1: Pure Reference / Architectural Decision - No Plan Triggered）
+> **定義**：產生了深度技術報告、架構對比或理論探索，但經決策評估後判定「維持現狀」、「無需變更核心代碼」或「純屬文獻/決策背景參考」，因此**不啟動任何 `plans/`**。
+> **目的**：避免報告成為無人過問的孤島，明確記錄「知其不為」的架構決策原因。
+
+| 報告 ID 與檔案 | 核心主題與決策結論 | 決策依據 / 狀態說明 |
+| :--- | :--- | :--- |
+| [`reports/002-comparison-agent-raw-rag-vs-agy-memory-engine.md`](./reports/002-comparison-agent-raw-rag-vs-agy-memory-engine.md) | 對比 Raw-RAG 旁路架構與 Google AGY 內嵌記憶引擎 | **維持現狀**：確認 Raw-RAG 旁路 Append-Only 模式與跨五大 CLI Agent 共享具備獨特優勢，不啟動修改計畫。 |
+| [`reports/003-llm-abstraction-and-karpathy-wiki-in-organizations.md`](./reports/003-llm-abstraction-and-karpathy-wiki-in-organizations.md) | 探討 LLM 抽象層與 Andrej Karpathy 個人 Wiki 模式在組織工程中的落地 | **組織/理論參考**：提供長程組織知識庫演進思考，無立即代碼重構需求，不啟動修改計畫。 |
+
+---
+
+### 狀態 2：推進中子計畫（State 2: Active / In-Progress Sub-plans - Linked & Incomplete）
+> **定義**：已有前導分析報告（或由重大架構議題觸發），已撰寫對應子計畫 `plans/<3-digit-id>-<slug>.md` 且內部包含指向報告的鏈結，但目前**尚未完工驗證（進行中、部分完成或受阻）**。
+> **目的**：在 SSOT 即時揭露專案活動脈搏、當前 Phase、阻斷點（Blockers）與預計驗證標準。
+
+| 計畫 ID 與檔案 | 關聯/依據報告 | 當前進度 | 進行中階段與阻斷點 | 預期驗證指標 |
+| :--- | :--- | :--- | :--- | :--- |
+| *(目前暫無未完成子計畫)* | - | 100% 全綠 | 所有現有子計畫已全數收斂驗證完成（見狀態 3） | - |
+
+---
+
+### 狀態 3：已結案閉環子計畫（State 3: Completed & Verified Sub-plans - Linked & Closed-Loop）
+> **定義**：依據報告制定計畫（或計畫交付後產出實測驗證報告），子計畫與報告間具備雙向鏈結，且**所有 Phase 全數實作完畢、單元/整合測試全綠、實測數據落盤**。
+> **目的**：提供完整的變更可追溯性（Traceability），可直接查驗 Git Commit、實測報告與全綠測試套件。
+
+| 計畫 ID 與檔案 | 關聯/依據報告 | 結案驗證報告 / 實測產物 | 交付內容與核心 Commit | 驗證測試狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| **核心基底五大階段**<br>([`PLAN.md`](./PLAN.md) 本身) | [`reports/001-raw-rag-reproduction-report.md`](./reports/001-raw-rag-reproduction-report.md) | [`reports/001-raw-rag-reproduction-report.md`](./reports/001-raw-rag-reproduction-report.md) | 完成 Phase 1~5 確定性降噪、四合一解析、尾部切塊、MLX 兩階段檢索與 MCP Server。 | `pytest tests/` 21 項測試通過 |
+| [`plans/001-ingestion-concurrency-failsafe-plan.md`](./plans/001-ingestion-concurrency-failsafe-plan.md) | [`reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md`](./reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md) | [`reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md`](./reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md) | 實作多 Agent 聚合批次推論（`max_batch_size=64`）、Antigravity Parser、交易原子性與壞檔隔離。 | 整合入全域迴歸測試 |
+| [`plans/002-status-cursor-observability-plan.md`](./plans/002-status-cursor-observability-plan.md) | [`reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md`](./reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md) | [`reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md`](./reports/004-raw-rag-ingestion-concurrency-and-failsafe-architecture.md) | 實作 `raw-rag-ingest --status` 多 Agent 游標新鮮度、即時 Lag 與專案目錄脈絡輸出。 | `tests/test_status_cli.py` 通過 |
+| [`plans/003-review-reconciliation-and-optimization-plan.md`](./plans/003-review-reconciliation-and-optimization-plan.md) | 獨立審查 7 大缺口評估 | [`reports/005-raw-rag-truth-alignment-and-reranker-4b-evaluation-report.md`](./reports/005-raw-rag-truth-alignment-and-reranker-4b-evaluation-report.md) | 1. 修正 Schema 文件（3 表）與 `dynamic_top_k: true`<br>2. 解耦 Reranker 支援 4B/0.6B<br>3. 實作兩階段延遲 SQL 載入與單次批次展開（根除暴力載入與 N+1）<br>4. 曝光 `engine_status` 與新增真實權重測試<br>5. 實作 LaunchAgent 服務管理 CLI<br>(Commits: `d5e0ea3`, `02656a6`, `2d87631`, `8b37a22`) | `tests/test_retrieval_real_weights.py`<br>`tests/test_daemon_cli.py`<br>全套 31 項測試全數通過 |
 
 ---
 
