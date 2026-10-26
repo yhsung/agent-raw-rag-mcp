@@ -14,7 +14,14 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from ..config import StorageConfig
-from ..models import ChunkRecord, IngestionCursor, NormalizedTurn, SessionMetadata, TurnContext
+from ..models import (
+    ChunkRecord,
+    IngestionCursor,
+    NormalizedTurn,
+    PendingSessionUpdate,
+    SessionMetadata,
+    TurnContext,
+)
 
 
 class SQLiteStore:
@@ -265,6 +272,131 @@ class SQLiteStore:
                     chunk_params,
                 )
 
+    def commit_batch_updates(self, updates: List[PendingSessionUpdate]) -> None:
+        """Atomically commit chunks, contexts, and sync cursors for multiple sessions in a single SQLite transaction.
+
+        If any error occurs during chunk saving or cursor updates, the transaction
+        is rolled back, guaranteeing the cursor never advances beyond persisted data (At-Least-Once).
+        """
+        if not updates:
+            return
+
+        now_str = datetime.now().isoformat()
+        total_chunks_written = 0
+
+        with self._get_connection() as conn:
+            for upd in updates:
+                meta = upd.meta
+                context = upd.updated_context
+                units = upd.updated_units
+                all_chunks = upd.all_chunks
+                first_changed = upd.first_changed_idx
+
+                units_arr = np.array(units, dtype=np.uint32)
+                units_blob = units_arr.tobytes()
+
+                # 1. Upsert session row
+                conn.execute(
+                    """
+                    INSERT INTO sessions (
+                        session_id, agent, project_path, git_branch, header,
+                        turn_context_json, units_blob, total_tokens, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(session_id) DO UPDATE SET
+                        project_path = excluded.project_path,
+                        git_branch = excluded.git_branch,
+                        header = excluded.header,
+                        turn_context_json = excluded.turn_context_json,
+                        units_blob = excluded.units_blob,
+                        total_tokens = excluded.total_tokens,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        meta.session_id,
+                        meta.agent,
+                        meta.project_path,
+                        meta.git_branch,
+                        context.header,
+                        json.dumps(context.to_dict()),
+                        units_blob,
+                        len(units),
+                        now_str,
+                    ),
+                )
+
+                # 2. Prune old mutable chunks >= first_changed
+                conn.execute(
+                    "DELETE FROM chunks WHERE session_id = ? AND chunk_index >= ?",
+                    (meta.session_id, first_changed),
+                )
+
+                # 3. Insert newly computed tail chunks
+                tail_chunks = all_chunks[first_changed:]
+                chunk_params = []
+                for c in tail_chunks:
+                    emb_bytes = None
+                    if c.embedding is not None:
+                        emb_bytes = np.asarray(c.embedding, dtype=np.float32).tobytes()
+
+                    chunk_params.append(
+                        (
+                            c.chunk_id,
+                            c.session_id,
+                            c.chunk_index,
+                            c.project_path,
+                            c.agent,
+                            c.content,
+                            c.start_token,
+                            c.end_token,
+                            c.start_turn,
+                            c.end_turn,
+                            c.start_date,
+                            c.end_date,
+                            c.session_timestamp,
+                            emb_bytes,
+                        )
+                    )
+
+                if chunk_params:
+                    conn.executemany(
+                        """
+                        INSERT INTO chunks (
+                            chunk_id, session_id, chunk_index, project_path, agent,
+                            content, start_token, end_token, start_turn, end_turn,
+                            start_date, end_date, session_timestamp, embedding
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        chunk_params,
+                    )
+                    total_chunks_written += len(chunk_params)
+
+                # 4. Advance cursor in the same atomic transaction
+                if upd.src_key:
+                    conn.execute(
+                        """
+                        INSERT INTO ingestion_cursors (source_key, agent, byte_offset, last_timestamp, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(source_key) DO UPDATE SET
+                            byte_offset = excluded.byte_offset,
+                            last_timestamp = excluded.last_timestamp,
+                            updated_at = excluded.updated_at
+                        """,
+                        (
+                            upd.src_key,
+                            upd.agent,
+                            upd.new_offset,
+                            upd.new_timestamp,
+                            now_str,
+                        ),
+                    )
+
+            # Active WAL maintenance
+            if total_chunks_written >= 50:
+                try:
+                    conn.execute("PRAGMA wal_checkpoint(PASSIVE);")
+                except Exception:
+                    pass
+
     def load_candidates_with_embeddings(
         self,
         project_path: Optional[str] = None,
@@ -392,6 +524,30 @@ class SQLiteStore:
         collected.reverse()
         return collected
 
+    def get_agent_cursors(self, agent: str) -> List[Dict[str, Any]]:
+        """Retrieve individual ingestion cursors and file positions for a specific agent."""
+        with self._get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT source_key, agent, byte_offset, last_timestamp, updated_at
+                FROM ingestion_cursors
+                WHERE agent = ?
+                ORDER BY updated_at DESC
+                """,
+                (agent,),
+            )
+            return [
+                {
+                    "source_key": r["source_key"],
+                    "agent": r["agent"],
+                    "byte_offset": r["byte_offset"],
+                    "last_timestamp": r["last_timestamp"],
+                    "updated_at": r["updated_at"],
+                }
+                for r in cur.fetchall()
+            ]
+
     def get_stats(self) -> Dict[str, Any]:
         with self._get_connection() as conn:
             cur = conn.cursor()
@@ -401,17 +557,121 @@ class SQLiteStore:
             cur.execute("SELECT count(*) as cnt FROM chunks")
             total_chunks = cur.fetchone()["cnt"]
 
-            cur.execute("SELECT agent, count(*) as cnt FROM chunks GROUP BY agent")
-            agent_counts = {r["agent"]: r["cnt"] for r in cur.fetchall()}
+            # Sessions count grouped by agent
+            cur.execute("SELECT agent, count(*) as cnt FROM sessions GROUP BY agent")
+            agent_sessions = {r["agent"]: r["cnt"] for r in cur.fetchall()}
 
+            # Chunks count and latest dialogue timestamps grouped by agent
+            cur.execute(
+                """
+                SELECT agent, count(*) as cnt, max(session_timestamp) as latest_ts, max(end_date) as latest_end
+                FROM chunks
+                GROUP BY agent
+                """
+            )
+            chunk_stats_rows = cur.fetchall()
+            agent_counts = {r["agent"]: r["cnt"] for r in chunk_stats_rows}
+            agent_latest_dialogue = {
+                r["agent"]: (r["latest_ts"] or r["latest_end"]) for r in chunk_stats_rows
+            }
+
+            # Ingestion cursors latest updated time grouped by agent
+            cur.execute(
+                "SELECT agent, max(updated_at) as latest_sync FROM ingestion_cursors GROUP BY agent"
+            )
+            agent_cursors_sync = {r["agent"]: r["latest_sync"] for r in cur.fetchall()}
+
+            # Overall last updated time from sessions or cursors
             cur.execute("SELECT max(updated_at) as latest FROM sessions")
             row = cur.fetchone()
             latest_time = row["latest"] if row else None
+
+            # Collect all distinct agents across sessions, chunks, and cursors
+            all_agents = (
+                set(agent_sessions.keys())
+                | set(agent_counts.keys())
+                | set(agent_cursors_sync.keys())
+            )
+
+            agents_detail: Dict[str, Dict[str, Any]] = {}
+            for ag in sorted(all_agents):
+                # Latest project path for this agent from chunks
+                cur.execute(
+                    """
+                    SELECT project_path
+                    FROM chunks
+                    WHERE agent = ? AND project_path != ''
+                    ORDER BY session_timestamp DESC, chunk_index DESC
+                    LIMIT 1
+                    """,
+                    (ag,),
+                )
+                p_row = cur.fetchone()
+                latest_proj = ""
+                if p_row and p_row["project_path"]:
+                    latest_proj = (
+                        p_row["project_path"]
+                        .replace("\\n", "")
+                        .replace("\\r", "")
+                        .replace("\\t", "")
+                        .replace("\n", "")
+                        .replace("\r", "")
+                        .replace("\t", "")
+                        .replace('"', "")
+                        .replace("'", "")
+                        .strip()
+                    )
+                elif ag in agent_sessions:
+                    # Fallback to sessions table if not in chunks
+                    cur.execute(
+                        """
+                        SELECT project_path
+                        FROM sessions
+                        WHERE agent = ? AND project_path != ''
+                        ORDER BY updated_at DESC
+                        LIMIT 1
+                        """,
+                        (ag,),
+                    )
+                    sp_row = cur.fetchone()
+                    if sp_row and sp_row["project_path"]:
+                        latest_proj = (
+                            sp_row["project_path"]
+                            .replace("\\n", "")
+                            .replace("\\r", "")
+                            .replace("\\t", "")
+                            .replace("\n", "")
+                            .replace("\r", "")
+                            .replace("\t", "")
+                            .replace('"', "")
+                            .replace("'", "")
+                            .strip()
+                        )
+
+                last_ingested = agent_cursors_sync.get(ag)
+                if not last_ingested and ag in agent_sessions:
+                    cur.execute(
+                        "SELECT max(updated_at) as mx FROM sessions WHERE agent = ?",
+                        (ag,),
+                    )
+                    smx = cur.fetchone()
+                    if smx and smx["mx"]:
+                        last_ingested = smx["mx"]
+
+                agents_detail[ag] = {
+                    "sessions": agent_sessions.get(ag, 0),
+                    "chunks": agent_counts.get(ag, 0),
+                    "latest_dialogue_time": agent_latest_dialogue.get(ag),
+                    "last_ingested_at": last_ingested,
+                    "latest_project_path": latest_proj,
+                }
 
             return {
                 "total_sessions": total_sessions,
                 "total_chunks": total_chunks,
                 "chunks_by_agent": agent_counts,
                 "last_updated": latest_time,
+                "overall_last_updated": latest_time,
                 "storage_path": str(self.db_path),
+                "agents": agents_detail,
             }

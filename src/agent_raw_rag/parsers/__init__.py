@@ -5,6 +5,7 @@ from .claude_parser import ClaudeParser
 from .codex_parser import CodexParser
 from .opencode_parser import OpenCodeParser
 from .omp_parser import OmpParser
+from .antigravity_parser import AntigravityParser
 
 __all__ = [
     "DeterministicSanitizer",
@@ -13,4 +14,5 @@ __all__ = [
     "CodexParser",
     "OpenCodeParser",
     "OmpParser",
+    "AntigravityParser",
 ]

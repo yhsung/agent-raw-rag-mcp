@@ -1,12 +1,15 @@
 /**
  * Oh My Pi (omp / pi) Raw-RAG Memory Extension
  * Multi-Agent incremental memory retrieval and display-time turn expansion.
+ *
+ * NOTE: Background incremental ingestion is handled automatically by the pull-based
+ * daemon (raw-rag-ingest --watch / LaunchAgent). Per Architectural Invariants,
+ * turn-based blocking/spawn hooks have been removed to eliminate process contention.
  */
 
 import { spawn } from "node:child_process";
 
 const PYTHON_BIN = "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/python3";
-const INGEST_BIN = "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-ingest";
 const MCP_BIN = "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/.venv/bin/raw-rag-mcp";
 const HF_HOME = "/Volumes/Samsung980/hf-home/";
 
@@ -111,25 +114,6 @@ print(raw_rag_status())
 `;
         return await runPyScript(code);
       },
-    });
-  }
-
-  // 3. Trigger non-blocking incremental ingestion after turns
-  if (typeof pi.on === "function") {
-    pi.on("turn:complete", () => {
-      try {
-        const child = spawn(INGEST_BIN, ["--agent", "omp"], {
-          detached: true,
-          stdio: "ignore",
-          env: {
-            ...process.env,
-            HF_HOME,
-          },
-        });
-        child.unref();
-      } catch {
-        // Non-blocking
-      }
     });
   }
 }

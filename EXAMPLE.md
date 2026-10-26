@@ -122,12 +122,12 @@ HF_HOME = "/Volumes/Samsung980/hf-home/"
 }
 ```
 
-#### B. 自動增量同步 Extension
+#### B. 跨工具工具註冊 Extension
 將 [`configs/omp_extension_raw_rag.ts`](./configs/omp_extension_raw_rag.ts) 複製或軟連結至擴充目錄：
 ```bash
 ln -sf /Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/configs/omp_extension_raw_rag.ts ~/.omp/agent/extensions/raw-rag.ts
 ```
-> 此腳本會在每一輪對話完成時（`turn:complete`），自動在背景非阻塞呼叫 `raw-rag-ingest --agent omp` 保持索引最新。
+> 此腳本為 OMP 註冊 `raw_rag_search`、`raw_rag_recent` 與 `raw_rag_status` 工具。增量索引已改由常駐守護進程（`raw-rag-ingest --watch` / LaunchAgent）以 Pull-based 方式自動掃描落盤，移除原本的 `turn:complete` hook 以免造成多 Agent 併發推論衝突與 GPU 搶佔。
 
 ---
 

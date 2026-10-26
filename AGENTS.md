@@ -7,14 +7,17 @@
 
 ## 1. 專案目標（Project Goal）
 
-將論文 **`Raw-RAG`**（*Is Complex Agentic Memory Always Needed? Naive RAG Is Stronger Than We Thought*, arXiv:2610.30755）經實證最有效的記憶機制，封裝為跨四大 CLI Coding Agent（**Claude Code**、**Codex CLI**、**OpenCode**、**Oh My Pi**）共用的本機 **MCP 記憶檢索與增量索引服務（`agent-raw-rag-mcp`）**。
+將論文 **`Raw-RAG`**（*Is Complex Agentic Memory Always Needed? Naive RAG Is Stronger Than We Thought*, arXiv:2610.30755）經實證最有效的記憶機制，封裝為跨五大 CLI Coding Agent（**Antigravity**、**Claude Code**、**Codex CLI**、**OpenCode**、**Oh My Pi**）共用的本機 **MCP 記憶檢索與增量索引服務（`agent-raw-rag-mcp`）**。
 
 ### 核心解決痛點
 1. **消除 `/compact` 有損壓縮失憶**：CLI Agent 內建的 `/compact`（滾動摘要）實證會造成 **21.9% 永久表徵損失（Representation Loss）**。本服務在旁路以 Append-Only 保存 100% 原始對白切片，壓縮後可隨時按需無損救援。
-2. **跨工具記憶互通**：同一專案在 Claude Code、Codex、OpenCode、Oh My Pi 之間的討論、架構決策與除錯脈絡寫入同一索引，切換工具不斷線。
+2. **跨工具記憶互通**：同一專案在 Antigravity、Claude Code、Codex、OpenCode、Oh My Pi 之間的討論、架構決策與除錯脈絡寫入同一索引，切換工具不斷線。
 3. **寫入端零 LLM 呼叫、讀取端免跑本機 Reader LLM**：
    - 寫入端僅做確定性降噪（Deterministic Sanitizer）與尾部增量切塊 $O(\Delta L)$，**0 次 LLM 呼叫**。
    - 讀取端僅使用本機 Apple Silicon MLX 執行 `Qwen3-Embedding-4B`（粗排 Top-128）+ `Qwen3-Reranker-4B`（精排 Top-15），直接將展開後的完整對話回合回傳給當前 CLI Agent（由 Claude / GPT / Gemini 自身擔任 Reader LLM），省去本機大型 Reader LLM 的 KV Cache 與統一記憶體開銷。
+4. **Pull-based 背景守護與跨 Agent 聚合批次推論**：
+   - 由背景常駐 Daemon（`raw-rag-ingest --watch` / LaunchAgent）以日誌游標非阻塞拉取，**移除 Agent 端 turn-based 阻斷式 Hook / Extension**。
+   - 跨多 Agent 採集未滿尾部區塊，單次 MLX Forward Pass 批次推論（`max_batch_size=64`），並透過單一 SQLite WAL 交易耦合落盤（Chunks + Cursors），杜絕 GPU 搶佔與表徵丟失。
 
 ---
 
@@ -52,7 +55,8 @@
    - 這是一台 **64GB Apple Silicon Mac**。
    - Embedding（`Qwen/Qwen3-Embedding-4B` 或 MLX 4-bit 量化版）與 Reranker（`Qwen/Qwen3-Reranker-4B` 或 MLX 4-bit 量化版）**優先使用 MLX**，禁止預設使用會造成 Metal graph cache / swap 暴增的 PyTorch MPS。
    - 本專案**不需要啟動本機 LLM 生成伺服器**（Reader 由宿主 CLI Agent 擔任）。
-3. **本機四大 CLI 工具之真實資料來源路徑**：
+3. **本機五大 CLI 工具之真實資料來源路徑**：
+   - **Antigravity (`agy`)**：`~/.gemini/antigravity-cli/brain/<uuid>/.system_generated/logs/transcript.jsonl`
    - **Claude Code (`claude`)**：`~/.claude/projects/<project-slug>/*.jsonl`
    - **Codex CLI (`codex`)**：`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
    - **OpenCode (`opencode`)**：`~/.local/share/opencode/opencode.db`（SQLite 資料庫，注意目前已達 **3.19 GB**，讀取時務必使用 SQLite 游標與欄位過濾，不可全表載入記憶體）

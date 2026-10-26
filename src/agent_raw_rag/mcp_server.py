@@ -8,7 +8,7 @@ import sys
 from typing import Any, Dict, List, Optional, Tuple
 from mcp.server.mcpserver import MCPServer
 
-from .cli import IngestionEngine
+from .cli import IngestionEngine, render_status_text
 from .config import AppConfig, load_config
 from .engine.chunker import IncrementalChunker
 from .engine.mlx_retriever import MLXRetriever
@@ -159,20 +159,19 @@ def raw_rag_ingest(
 
 
 @mcp.tool()
-def raw_rag_status() -> str:
-    """Retrieve status and statistics of the local Raw-RAG persistent memory index."""
+def raw_rag_status(agent: Optional[str] = None) -> str:
+    """Retrieve status, statistics, and multi-agent cursor freshness of the local Raw-RAG persistent memory index."""
     _, store, _, _, _ = get_components()
     stats = store.get_stats()
-
-    lines = [
-        "=== agent-raw-rag-mcp Status ===",
-        f"Storage Database: {stats['storage_path']}",
-        f"Total Sessions:   {stats['total_sessions']}",
-        f"Total 256t Chunks: {stats['total_chunks']}",
-        f"Chunks by Agent:  {stats['chunks_by_agent']}",
-        f"Last Synchronized: {stats['last_updated'] or 'Never'}",
-    ]
-    return "\n".join(lines)
+    agent_cursors = None
+    if agent:
+        agent_cursors = store.get_agent_cursors(agent)
+    return render_status_text(
+        stats,
+        target_agent=agent,
+        agent_cursors=agent_cursors,
+        title="=== agent-raw-rag-mcp Status ===",
+    )
 
 
 def main() -> None:

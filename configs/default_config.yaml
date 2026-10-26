@@ -42,6 +42,9 @@ sources:
   oh_my_pi:
     enabled: true
     sessions_dir: "~/.omp/agent/sessions"
+  antigravity:
+    enabled: true
+    brain_dir: "~/.gemini/antigravity-cli/brain"
 
 storage:
   backend: "sqlite" # "sqlite" or "pgvector"

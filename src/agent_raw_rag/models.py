@@ -100,6 +100,21 @@ class IngestionCursor:
 
 
 @dataclass
+class PendingSessionUpdate:
+    """Staged incremental session update awaiting batch embedding and atomic commit."""
+    meta: SessionMetadata
+    src_key: str
+    agent: str
+    new_offset: int
+    new_timestamp: int
+    updated_context: TurnContext
+    updated_units: List[int]
+    all_chunks: List[ChunkRecord]
+    tail_chunks: List[ChunkRecord]
+    first_changed_idx: int
+
+
+@dataclass
 class IngestionStats:
     agent: str
     sessions_scanned: int = 0

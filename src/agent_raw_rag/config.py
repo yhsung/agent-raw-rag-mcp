@@ -84,6 +84,11 @@ class SourcesConfig:
             enabled=True, path="~/.omp/agent/sessions"
         )
     )
+    antigravity: SourceItemConfig = field(
+        default_factory=lambda: SourceItemConfig(
+            enabled=True, path="~/.gemini/antigravity-cli/brain"
+        )
+    )
 
 
 @dataclass
@@ -115,6 +120,7 @@ class AppConfig:
         self.sources.codex.path = str(Path(self.sources.codex.path).expanduser())
         self.sources.opencode.path = str(Path(self.sources.opencode.path).expanduser())
         self.sources.oh_my_pi.path = str(Path(self.sources.oh_my_pi.path).expanduser())
+        self.sources.antigravity.path = str(Path(self.sources.antigravity.path).expanduser())
 
 
 def load_config(config_path: Optional[str] = None) -> AppConfig:
@@ -196,6 +202,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
     codex_d = src_d.get("codex", {})
     opencode_d = src_d.get("opencode", {})
     omp_d = src_d.get("oh_my_pi", {})
+    ag_d = src_d.get("antigravity", {})
 
     src_cfg = SourcesConfig(
         claude_code=SourceItemConfig(
@@ -213,6 +220,10 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         oh_my_pi=SourceItemConfig(
             enabled=omp_d.get("enabled", True),
             path=omp_d.get("sessions_dir", "~/.omp/agent/sessions"),
+        ),
+        antigravity=SourceItemConfig(
+            enabled=ag_d.get("enabled", True),
+            path=ag_d.get("brain_dir", ag_d.get("path", "~/.gemini/antigravity-cli/brain")),
         ),
     )
 

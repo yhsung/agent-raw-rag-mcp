@@ -7,9 +7,12 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
+import logging
 
 from ..models import NormalizedTurn, SessionMetadata
 from .sanitizer import DeterministicSanitizer
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_iso_time(ts_val: Any) -> Optional[datetime]:
@@ -67,17 +70,40 @@ class ClaudeParser:
                 f.seek(start_offset)
 
             while True:
+                line_start_pos = f.tell()
                 line = f.readline()
                 if not line:
                     break
-                current_offset = f.tell()
-                line = line.strip()
-                if not line:
+
+                # If incomplete trailing line at EOF, roll back offset for next retry
+                if not line.endswith("\n"):
+                    current_size = path.stat().st_size
+                    if f.tell() >= current_size:
+                        f.seek(line_start_pos)
+                        current_offset = line_start_pos
+                        break
+
+                stripped = line.strip()
+                if not stripped:
+                    current_offset = f.tell()
                     continue
 
                 try:
-                    event = json.loads(line)
-                except Exception:
+                    event = json.loads(stripped)
+                    current_offset = f.tell()
+                except json.JSONDecodeError as jde:
+                    current_size = path.stat().st_size
+                    if f.tell() >= current_size:
+                        f.seek(line_start_pos)
+                        current_offset = line_start_pos
+                        break
+                    logger.warning(
+                        "Malformed JSON in %s at %d: %s. Skipping line.",
+                        path,
+                        line_start_pos,
+                        jde,
+                    )
+                    current_offset = f.tell()
                     continue
 
                 # Extract environment context if available

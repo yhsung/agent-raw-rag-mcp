@@ -23,7 +23,7 @@
 flowchart TD
     %% 寫入端管線
     subgraph S1["1. 寫入管線 (Ingestion Pipeline)"]
-        RAW["四大 Agent 原始對白與操作日誌<br/>(Claude / Codex / OpenCode / OMP)"]
+        RAW["五大 Agent 原始對白與操作日誌<br/>(Claude / Codex / OpenCode / OMP / Antigravity)"]
         
         INV1["【不變量 1】寫入端零 LLM 呼叫 (Zero-LLM Ingestion)<br/>嚴禁呼叫 LLM 進行摘要、原子事實萃取或三元組抽取"]
         RAW --> INV1
@@ -61,7 +61,7 @@ flowchart TD
 
 ---
 
-## 3. 四大＋ Agent 原生 Discovery 與日誌支援
+## 3. 五大 Agent 原生 Discovery 與日誌支援
 
 經實測與逆向分析各 Agent 核心機制，本服務提供全自動支援：
 
@@ -71,7 +71,7 @@ flowchart TD
 | **Codex CLI** | `~/.codex/sessions/**/rollout-*.jsonl` | `(file_path, byte_offset)` | `~/.codex/config.toml` 之 `[mcp_servers.raw_rag]` |
 | **OpenCode** | `~/.local/share/opencode/opencode.db` | `(opencode_db, time_updated)` 唯讀游標串流 | `~/.config/opencode/opencode.jsonc`（`mcp` 節點） |
 | **Oh My Pi (`omp`/`pi`)** | `~/.omp/agent/sessions/<slug>/*.jsonl` | `(file_path, byte_offset)` | **`~/.omp/agent/mcp.json`**（根物件須為 `mcpServers`，支援 `type: "stdio"`） |
-| **Antigravity** | - | - | `~/.gemini/config/mcp_config.json` 與 `settings.json`（`mcpServers`） |
+| **Antigravity** | `~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl` | `(file_path, byte_offset)` | `~/.gemini/config/mcp_config.json` 與 `settings.json`（`mcpServers`） |
 
 ---
 
@@ -86,7 +86,7 @@ flowchart TD
    - 參數：`project_path: Optional[str]`, `limit_turns: int = 30`
    - 功能：剛開啟 Session 或執行 `/compact` 後，取回該專案最近 $N$ 輪完整上下文。
 3. **`raw_rag_ingest`**
-   - 參數：`agent: Optional[str]`
+   - 參數：`agent: Optional[str]`（可選 `'claude'`, `'codex'`, `'opencode'`, `'omp'`, `'antigravity'`）
    - 功能：手動或自動觸發增量日誌寫入與向量運算。
 4. **`raw_rag_status`**
    - 功能：回傳目前的 Sessions 數、Chunks 總數與各 Agent 分佈。
@@ -102,6 +102,7 @@ raw-rag-ingest
 
 # 指定單一 Agent 進行同步
 raw-rag-ingest --agent omp
+raw-rag-ingest --agent antigravity
 
 # 背景守護輪詢模式（每 30 秒自動增量同步）
 raw-rag-ingest --watch &
@@ -138,7 +139,7 @@ pytest -v
 ---
 
 ## 6. 深入文件
-- **本機安裝與四大 Agent 設定實戰**：[`EXAMPLE.md`](./EXAMPLE.md)
+- **本機安裝與五大 Agent 設定實戰**：[`EXAMPLE.md`](./EXAMPLE.md)
 - **AI Agent 作業規範與架構邊界**：[`AGENTS.md`](./AGENTS.md)
 - **詳細技術規劃與資料模型**：[`PLAN.md`](./PLAN.md)
 - **論文復現與消融實驗報告**：[`reports/raw-rag-reproduction-report.md`](./reports/raw-rag-reproduction-report.md)
