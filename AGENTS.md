@@ -43,7 +43,7 @@
 
 ---
 
-## 3. 硬體、模型與環境約束（Machine & Model Rules）
+## 3. 硬體、模型與資料安全約束（Machine, Model & Data Rules）
 
 1. **Hugging Face 權重路徑**：
    - 一律設定 `HF_HOME=/Volumes/Samsung980/hf-home/`。
@@ -57,6 +57,10 @@
    - **Codex CLI (`codex`)**：`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
    - **OpenCode (`opencode`)**：`~/.local/share/opencode/opencode.db`（SQLite 資料庫，注意目前已達 **3.19 GB**，讀取時務必使用 SQLite 游標與欄位過濾，不可全表載入記憶體）
    - **Oh My Pi (`omp` / `pi`)**：`~/.omp/agent/sessions/<project-slug>/*.jsonl`（以及 `~/.omp/agent/agent.db`）
+4. **本機資料目錄保護（Local Data & Git Tracking Protection）**：
+   - `data/` 目錄專門存放本機擷取之原始對白切片、SQLite 資料庫（如 `raw_rag.db`）、向量索引與快取，屬於本機環境與敏感對話資料，專案已於 `.gitignore` 設定忽略。
+   - **嚴禁將 `data/` 或其內部任何檔案納入 git tracking**（禁止 `git add data/`、`git add -f data/` 或從 `.gitignore` 移除）。
+   - **操作守門員（Flag & Warn）**：任何 Agent 執行任何指令或 git 操作時，若偵測到可能直接或間接將 `data/` 或其檔案加入版控（包含 `git add .`、`git commit` 涉及 `data/` 等），**必須立即主動攔截（flag）並提出明確警告**，阻止該操作，保護本機私有資料與避免大檔污染倉庫。
 
 ---
 
@@ -83,17 +87,22 @@
 
 ---
 
-## 5. 開發里程碑（Implementation Milestones）
+## 5. 架構指引與模組職責（Architectural Guidance & Implemented Modules）
 
-接手實作時，請依序推進以下 5 個階段（詳見 [`PLAN.md`](./PLAN.md)）：
+本專案的核心里程碑已全數完成實作與自動化驗證（詳見各單元測試與 [`PLAN.md`](./PLAN.md)）。以下為各核心模組的架構職責指引與維護規範，後續擴充或調整時須嚴格遵循其責任劃分：
 
-- [ ] **Phase 1：確定性降噪器與四合一增量解析器（`src/agent_raw_rag/parsers/`）**
-  - 實作 `sanitizer.py`、`claude_parser.py`、`codex_parser.py`、`opencode_parser.py`、`omp_parser.py` 與單元測試。
-- [ ] **Phase 2：增量尾部切塊與儲存引擎（`src/agent_raw_rag/engine/chunker.py` & `store.py`）**
-  - 移植 `add_incremental_message`、`turn_spans` 映射與 SQLite + Vector（含 `pgvector` 選配）持久化。
-- [ ] **Phase 3：Apple Silicon MLX 檢索與動態展開引擎（`src/agent_raw_rag/engine/retriever.py`）**
-  - 整合 `Qwen3-Embedding-4B` + `Qwen3-Reranker-4B`、時序預過濾、時序重排與 `_expand_chunk_to_turns`。
-- [ ] **Phase 4：MCP Server 與 CLI 增量寫入命令（`src/agent_raw_rag/mcp_server.py` & `cli.py`）**
-  - 實作 `raw-rag-mcp`（提供 `raw_rag_search`、`raw_rag_recent`、`raw_rag_ingest`、`raw_rag_status`）與 `raw-rag-ingest` CLI。
-- [ ] **Phase 5：四大 CLI Agent 接線腳本與端到端驗證（`configs/` & `tests/`）**
-  - 驗證從 `.claude`、`.codex`、`opencode.db`、`.omp` 實機增量匯入與跨工具檢索延遲／召回率。
+- [x] **Phase 1：確定性降噪器與四合一增量解析器（`src/agent_raw_rag/parsers/`）**
+  - `sanitizer.py`：純文字降噪，嚴格執行零 LLM 規則。負責截斷工具呼叫輸出、剝除原始碼全文及 giant diff，僅保留失敗 stderr（最多 15 行）與 100% 原始對白本文。
+  - `claude_parser.py`、`codex_parser.py`、`opencode_parser.py`、`omp_parser.py`：針對四大 CLI 工具各自的儲存結構（JSONL 與 SQLite），維護增量讀取游標（`byte_offset`、`last_message_id`、`time_created`），確保重複呼叫不產生重複轉錄。
+- [x] **Phase 2：增量尾部切塊與儲存引擎（`src/agent_raw_rag/engine/chunker.py` & `store.py`）**
+  - `chunker.py`：以 `tiktoken` (`cl100k_base`) 實作 256-token 窗口（步長 224 tokens，重疊 32 tokens）的 $O(\Delta L)$ 尾部增量切塊，並同時產生高精度的 `turn_spans` 回合映射表。
+  - `store.py`：以 SQLite 為核心儲存（`sessions`、`turns`、`chunks`、`sync_cursors`），以二進位快取管理 Dense 向量索引，支援事務一致性與增量快照。
+- [x] **Phase 3：Apple Silicon MLX 檢索與動態展開引擎（`src/agent_raw_rag/engine/mlx_retriever.py`）**
+  - `mlx_retriever.py`：整合本機 MLX 4-bit / 8-bit `Qwen3-Embedding-4B` 與 `Qwen3-Reranker-4B`，遵循兩階段漏斗（Dense 粗排 Top-128 $\to$ Cross-Encoder 精排 Top-15 $\to$ 動態分數門檻過濾）。
+  - **時序升冪重排與動態展開**：檢索命中切片後，依原始對話時序（`session_timestamp, start_turn, start_token`）重排，並透過 `_expand_chunk_to_turns` 動態還原為完整 User/Assistant 對話回合，去除跨區塊重複回合。
+- [x] **Phase 4：MCP Server 與 CLI 增量寫入命令（`src/agent_raw_rag/mcp_server.py` & `cli.py`）**
+  - `mcp_server.py`：向宿主 CLI Agents 暴露標準 MCP 工具集（`raw_rag_search`、`raw_rag_recent`、`raw_rag_ingest`、`raw_rag_status`），提供零延遲跨工具記憶存取。
+  - `cli.py`：提供獨立命令列工具（`agent-raw-rag`），支援單次/批次增量匯入、手動檢索驗證與系統狀態巡檢。
+- [x] **Phase 5：四大 CLI Agent 接線腳本與端到端驗證（`configs/` & `tests/`）**
+  - `configs/`：維護 Claude Code（Hook）、Codex CLI（TOML）、OpenCode（JSON）、Oh My Pi（TypeScript Extension）之即插即用接入配置。
+  - `tests/`：涵蓋降噪器、四大解析器、尾部切塊、SQLite 儲存、MLX 兩階段檢索與 MCP 協定的端到端自動化測試套件。
