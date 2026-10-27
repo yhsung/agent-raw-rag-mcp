@@ -347,7 +347,7 @@
           <rect x="30" y="318" width="222" height="76" rx="8" fill="#0b1120" stroke="#a78bfa" />
           <text x="42" y="340" fill="#a78bfa" font-size="12.5" font-weight="700">Oh My Pi (omp / pi)</text>
           <text x="42" y="358" fill="#cbd5e1" font-size="10.5">~/.omp/agent/sessions/&lt;slug&gt;/*.jsonl</text>
-          <text x="42" y="376" fill="#94a3b8" font-size="10.5">觸發：Extension turn_end / compact</text>
+          <text x="42" y="376" fill="#94a3b8" font-size="10.5">寫入：背景 Daemon；查詢：標準 MCP</text>
 
           <!-- Arrows Col 1 -> Col 2 -->
           <line x1="266" y1="145" x2="308" y2="145" stroke="#fbbf24" stroke-width="2" marker-end="url(#arr-a)" />
@@ -590,17 +590,27 @@ Project: /Volumes/Samsung970EVOPlus/dev-projects/raw-rag | Agent: claude-code
 
         <div class="card">
           <div class="card-header">
-            <span class="card-title">4. Oh My Pi (<code>~/.omp/agent/config.yml</code> &amp; Extension)</span>
-            <span class="pill pill-purple">Extension + MCP</span>
+            <span class="card-title">4. Oh My Pi (<code>~/.omp/agent/mcp.json</code>)</span>
+            <span class="pill pill-purple">Standard MCP</span>
           </div>
           <p style="font-size: 13px; color: var(--muted);">
-            透過 <code>~/.omp/agent/extensions/raw-rag.ts</code> 監聽 <code>turn_end</code> 與 <code>session_compact</code>，壓縮時自動建立檢查點：
+            僅透過標準 stdio MCP 提供四個工具，不安裝原生工具擴充。增量索引由背景 Daemon 負責；壓縮後可呼叫 <code>mcp__raw_rag_recent</code> 取回最近對話：
           </p>
-          <pre><span class="hl-comment">// ~/.omp/agent/extensions/raw-rag.ts</span>
-export default function (pi) {
-  pi.on(<span class="hl-str">"turn_end"</span>, async () =&gt; {
-    await pi.exec(<span class="hl-str">"raw-rag-ingest"</span>, [<span class="hl-str">"--agent"</span>, <span class="hl-str">"omp"</span>, <span class="hl-str">"--incremental"</span>]);
-  });
+          <pre>{
+  "mcpServers": {
+    "raw-rag": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "/Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp",
+        "agent-raw-rag-mcp"
+      ],
+      "env": {
+        "HF_HOME": "/Volumes/Samsung980/hf-home/"
+      }
+    }
+  }
 }</pre>
         </div>
       </div>

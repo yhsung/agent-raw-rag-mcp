@@ -109,7 +109,7 @@
   - `mcp_server.py`：向宿主 CLI Agents 暴露標準 MCP 工具集（`raw_rag_search`、`raw_rag_recent`、`raw_rag_ingest`、`raw_rag_status`），提供零延遲跨工具記憶存取。
   - `cli.py`：提供獨立命令列工具（`agent-raw-rag`），支援單次/批次增量匯入、手動檢索驗證與系統狀態巡檢。
 - [x] **Phase 5：四大 CLI Agent 接線腳本與端到端驗證（`configs/` & `tests/`）**
-  - `configs/`：維護 Claude Code（Hook）、Codex CLI（TOML）、OpenCode（JSON）、Oh My Pi（TypeScript Extension）之即插即用接入配置。
+  - `configs/` 與 `mcp.json`：維護 Claude Code（Hook）、Codex CLI（TOML）、OpenCode（JSON）、Oh My Pi（標準 stdio MCP JSON）之接入配置。OMP 不安裝原生工具擴充；伺服器名稱為 `raw-rag` 時，工具使用 `mcp__raw_rag_*` 名稱。
   - `tests/`：涵蓋降噪器、四大解析器、尾部切塊、SQLite 儲存、MLX 兩階段檢索與 MCP 協定的端到端自動化測試套件。
 
 ---

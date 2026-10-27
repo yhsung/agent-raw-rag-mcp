@@ -77,6 +77,8 @@ flowchart TD
 | **Oh My Pi (`omp`/`pi`)** | `~/.omp/agent/sessions/<slug>/*.jsonl` | `(file_path, byte_offset)` | **`~/.omp/agent/mcp.json`**（根物件須為 `mcpServers`，支援 `type: "stdio"`） |
 | **Antigravity** | `~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl` | `(file_path, byte_offset)` | `~/.gemini/config/mcp_config.json` 與 `settings.json`（`mcpServers`） |
 
+**OMP 僅使用標準 MCP，不需要 TypeScript Extension。** 伺服器名稱為 `raw-rag` 時，工具名稱為 `mcp__raw_rag_search`、`mcp__raw_rag_recent`、`mcp__raw_rag_ingest` 與 `mcp__raw_rag_status`。若曾安裝舊版 `~/.omp/agent/extensions/raw-rag.ts`，請刪除並重新啟動 OMP；該擴充的原生 `raw_rag_*` 工具使用不相容的執行契約。詳見[遷移步驟](./EXAMPLE.md#b-工具入口與舊版遷移)。
+
 ---
 
 ## 4. MCP Tools 與 CLI 規格

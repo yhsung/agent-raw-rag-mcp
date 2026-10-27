@@ -121,12 +121,17 @@ HF_HOME = "/Volumes/Samsung980/hf-home/"
 }
 ```
 
-#### B. 跨工具工具註冊 Extension
-將 [`configs/omp_extension_raw_rag.ts`](./configs/omp_extension_raw_rag.ts) 複製或軟連結至擴充目錄：
-```bash
-ln -sf /Volumes/Samsung970EVOPlus/dev-projects/agent-raw-rag-mcp/configs/omp_extension_raw_rag.ts ~/.omp/agent/extensions/raw-rag.ts
-```
-> 此腳本為 OMP 註冊 `raw_rag_search`、`raw_rag_recent` 與 `raw_rag_status` 工具。增量索引已改由常駐守護進程（`raw-rag-ingest --watch` / LaunchAgent）以 Pull-based 方式自動掃描落盤，移除原本的 `turn:complete` hook 以免造成多 Agent 併發推論衝突與 GPU 搶佔。
+#### B. 工具入口與舊版遷移
+OMP 僅透過標準 MCP 載入四個工具，不需要安裝 TypeScript Extension。當伺服器名稱為 `raw-rag` 時，OMP 中的工具名稱為：
+
+- `mcp__raw_rag_search`
+- `mcp__raw_rag_recent`
+- `mcp__raw_rag_ingest`
+- `mcp__raw_rag_status`
+
+若先前安裝過原生擴充，刪除 `~/.omp/agent/extensions/raw-rag.ts` 並重新啟動 OMP，清除已載入的舊 `raw_rag_*` 工具。舊擴充使用不相容的 `handler` 契約，會在進入 Python 前發生 `definition.execute is not a function`；不要與標準 MCP 並行安裝。
+
+增量索引仍由常駐守護進程（`raw-rag-ingest --watch` / LaunchAgent）自動掃描，不使用 turn-based ingestion hooks。
 
 ---
 

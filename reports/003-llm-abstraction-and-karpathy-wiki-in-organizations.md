@@ -230,6 +230,47 @@ flowchart TB
 
 ---
 
+### 6.4 定性本質辨析：`TencentDB-Agent-Memory` 是否更像是「LLM-Wiki 管理系統 (CMS) + 前端 Raw Data Ingest」？
+
+剝除行銷術語後，`TencentDB-Agent-Memory v2.0` 的本質就是一套**「多租戶的企業級 LLM-Wiki 與記憶資產管理系統（CMS），外加一個前端 Raw Data 自動攔截／匯入器」**：
+
+```mermaid
+flowchart LR
+    subgraph RawIn["1. 前端 Raw Data Ingest（四種輸入源）"]
+        R1["即時對話流<br/>(MemoryProxy 攔截 CLI API)"]
+        R2["任務工具軌跡<br/>(Tool Calls & Logs)"]
+        R3["業務與技術文檔<br/>(Panel 上傳 Markdown/Docs)"]
+        R4["Git 程式碼倉庫<br/>(Source Fetcher 拉取)"]
+    end
+
+    subgraph Compiler["2. 中間層：LLM 抽象編譯器（Ingest-to-Compile）"]
+        C1["L1→L3 畫像管線"]
+        C2["Skill 萃取管線"]
+        C3["Karpathy Wiki 兩階段管線<br/>(ingest-v2)"]
+        C4["AST 靜態分析<br/>(CodeGraph)"]
+    end
+
+    subgraph CMS["3. 核心本體：LLM-Wiki 與記憶資產管理系統 (MemoryPanel)"]
+        W1["📄 scene_blocks/*.md & persona.md"]
+        W2["⚡ SKILL.md (含版本與驗證規則)"]
+        W3["📖 wiki/{sources,entities,concepts}/*.md<br/>(含 locked 鎖定、sources 溯源、wikilinks)"]
+        W4["🕸️ Code-Graph 呼叫圖譜"]
+        GOV["🛡️ 組織 CMS 治理：Owner / 4級 ACL / Agent Loadout 配發"]
+    end
+
+    R1 --> C1 --> W1
+    R2 --> C2 --> W2
+    R3 --> C3 --> W3
+    R4 --> C4 --> W4
+    W1 & W2 & W3 & W4 --- GOV
+```
+
+#### 關鍵定性差異：「Ingest 進來的 Raw Data 拿去幹嘛？」
+* **`TencentDB-Agent-Memory v2.0` 屬於「Ingest-to-Compile（為了編譯而收集）」**：Raw 對話收進來主要是為了餵給 LLM 抽 L1~L3，L0 原文檢索較陽春（單條訊息、丟棄工具報錯、無精排與展開）。其核心產品本體是編譯後的 Markdown 資產管理。
+* **`agent-raw-rag-mcp` 屬於「Ingest-to-Retrieve-Raw（為了無損還原而收集）」**：0 LLM 寫入、保留失敗 stderr、MLX Qwen3 兩階段精排、動態展開完整回合。在**底層 Raw 對話與除錯現場的無損救援**上，`agent-raw-rag-mcp` 保持絕對客觀真實與零表徵損失。
+
+---
+
 ## 7. 結論與組織級演進建議
 
 ### 7.1 綜合結論

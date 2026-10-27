@@ -15,7 +15,7 @@
 | 報告 ID 與檔案 | 核心主題與決策結論 | 決策依據 / 狀態說明 |
 | :--- | :--- | :--- |
 | [`reports/002-comparison-agent-raw-rag-vs-agy-memory-engine.md`](./reports/002-comparison-agent-raw-rag-vs-agy-memory-engine.md) | 對比 Raw-RAG 旁路架構與 Google AGY 內嵌記憶引擎 | **維持現狀**：確認 Raw-RAG 旁路 Append-Only 模式與跨五大 CLI Agent 共享具備獨特優勢，不啟動修改計畫。 |
-| [`reports/003-llm-abstraction-and-karpathy-wiki-in-organizations.md`](./reports/003-llm-abstraction-and-karpathy-wiki-in-organizations.md) | 探討 LLM 抽象層與 Andrej Karpathy 個人 Wiki 模式在組織工程中的落地 | **組織/理論參考**：提供長程組織知識庫演進思考，無立即代碼重構需求，不啟動修改計畫。 |
+| [`reports/003-llm-abstraction-and-karpathy-wiki-in-organizations.md`](./reports/003-llm-abstraction-and-karpathy-wiki-in-organizations.md) | 探討 LLM 抽象層、Karpathy Wiki 與 TencentDB-Agent-Memory v2.0 組織架構比較 | **組織/理論參考**：深度對比 Karpathy LLM-Wiki、TencentDB-Agent-Memory v2.0 (feat/server_team) 與 Raw-RAG，確立 Ingest-to-Compile (CMS) 與 Ingest-to-Retrieve-Raw (無損底座) 之分工邊界，無立即重構需求，維持現狀。 |
 
 ---
 
@@ -51,13 +51,13 @@
 ├── CLAUDE.md                        # Symlink -> AGENTS.md (相容 Claude Code)
 ├── PLAN.md                          # 本技術規劃書
 ├── pyproject.toml                   # uv 專案與 CLI entrypoints 設定
+├── mcp.json                        # 標準 stdio MCP 接線；OMP 不使用原生工具擴充
 ├── configs/
 │   ├── default_config.yaml          # 切塊 (256/32)、Top-k (128/15)、Dynamic Top-K (預設開啟)、MLX 模型與路徑設定
 │   ├── com.user.agent-raw-rag.plist.template # macOS LaunchAgent 常駐背景守護進程服務樣板
 │   ├── claude_hooks_snippet.json    # Claude Code ~/.claude/settings.json 接線設定
 │   ├── codex_config_snippet.toml    # Codex ~/.codex/config.toml 接線設定
-│   ├── opencode_snippet.json        # OpenCode ~/.config/opencode/opencode.json 接線設定
-│   └── omp_extension_raw_rag.ts     # Oh My Pi ~/.omp/agent/extensions/raw-rag.ts 擴充腳本
+│   └── opencode_snippet.json        # OpenCode ~/.config/opencode/opencode.json 接線設定
 ├── docs/
 │   └── PUBLISHING.md                # PyPI 打包稽核、TestPyPI 演練與發布 SOP
 ├── plans/                           # 嚴格遵循 <3 digit id>-<slug>.md 時序遞增命名
@@ -218,3 +218,13 @@ Branch: {git_branch}
    - **回傳**：本次新增的 Session 數、新增 Turn 數、尾部重算之 Chunk 數與耗時（毫秒）。
 4. **`raw_rag_status`**
    - **回傳**：目前索引中的總 Session 數、總 Chunk 數、各 Agent（Claude / Codex / OpenCode / OMP）佔比與最後同步時間。
+
+---
+
+## 7. OMP 標準 MCP 接線修正（2026-10-27）
+
+- **根因**：舊原生擴充以 `handler` 註冊工具，但 OMP 18.12.6 的工具契約為 `execute(toolCallId, params, signal, onUpdate, ctx)`，因此在進入 Python 前失敗。
+- **切換**：移除專案與本機部署的原生擴充，僅由 `~/.omp/agent/mcp.json` 或專案 `mcp.json` 載入標準 stdio MCP；現有已驗證的本機 `.venv/bin/raw-rag-mcp` 啟動設定不變。新安裝亦可使用 [`EXAMPLE.md`](./EXAMPLE.md#34-oh-my-pi-omp--pi) 的 `uvx` 設定。
+- **入口**：伺服器名稱為 `raw-rag` 時，OMP 暴露 `mcp__raw_rag_search`、`mcp__raw_rag_recent`、`mcp__raw_rag_ingest`、`mcp__raw_rag_status`。已載入舊擴充的工作階段須重新啟動 OMP。
+- **實測**：新啟動 OMP 18.12.6 的真實工具註冊清單僅包含上述四個 MCP 工具，沒有原生 `raw_rag_*`；檢查未啟動模型對話。透過已掛載的標準 MCP 執行 `raw_rag_status` 成功；全域查詢 CodeGraph 與 codebase-memory-mcp 的歷史評估，`top_k=3` 回傳 3 筆歷史段落。未執行 ingestion。
+- **驗證限制**：查詢後狀態為 Embedding `mlx_native`、Reranker `fallback_token_overlap`。工具接線與查詢回傳已驗證，但不是完整兩階段 MLX 成功的證據；Reranker 載入問題不在本次接線修正範圍。

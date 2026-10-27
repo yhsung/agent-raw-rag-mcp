@@ -80,6 +80,8 @@ Based on empirical reverse engineering of each agent's execution model, `agent-r
 | **Oh My Pi (`omp`/`pi`)** | `~/.omp/agent/sessions/<slug>/*.jsonl` | `(file_path, byte_offset)` | **`~/.omp/agent/mcp.json`** (Root object must be `mcpServers`, supports `type: "stdio"`) |
 | **Antigravity** | `~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl` | `(file_path, byte_offset)` | `~/.gemini/config/mcp_config.json` and `settings.json` (`mcpServers`) |
 
+**OMP uses standard MCP only; no TypeScript extension is required.** With server name `raw-rag`, its tools are exposed as `mcp__raw_rag_search`, `mcp__raw_rag_recent`, `mcp__raw_rag_ingest`, and `mcp__raw_rag_status`. Remove the legacy `~/.omp/agent/extensions/raw-rag.ts` and restart OMP if previously installed; its native `raw_rag_*` tools use an incompatible execution contract. See [migration instructions](./EXAMPLE.md#b-工具入口與舊版遷移).
+
 ---
 
 ## 4. MCP Tools & CLI Specification
